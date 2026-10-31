@@ -47,8 +47,8 @@ const arabic: Dict = {
     'ميزانية $800 استُخدم منها $560 في اليوم 20، ويُدفع $30 إضافيًا في اليوم. تنفد في اليوم 28: 20 + (800 − 560) ÷ 30.',
 
   // Users stopped by a budget
-  'Users who have used up their own budget or their limit for each user. GitHub stops their AI credits until the next month.':
-    'مستخدمون استنفدوا ميزانيتهم الخاصة أو حدهم لكل مستخدم. يوقف GitHub أرصدة الذكاء الاصطناعي لهم حتى الشهر القادم.',
+  'Users who have used up the limit GitHub holds them to: their own budget, their cost center limit or the limit for each user. GitHub stops their AI credits until the next month.':
+    'مستخدمون استنفدوا الحد الذي يُخضعهم له GitHub: ميزانيتهم الخاصة، أو حد مركز التكلفة، أو الحد لكل مستخدم. يوقف GitHub أرصدة الذكاء الاصطناعي لهم حتى الشهر القادم.',
   'Stopped when amount used ≥ limit of the user': 'يتوقف عندما يكون المبلغ المستخدَم ≥ حد المستخدم',
   'Select the number to see these users on the Users page.': 'اختر الرقم لترى هؤلاء المستخدمين في صفحة المستخدمين.',
   'A user stopped by a budget for an organization or the enterprise is not counted here; see Budgets used up.':
@@ -58,7 +58,8 @@ const arabic: Dict = {
   // Users near their limit
   'Users who have used 80% or more of their own budget or limit, but not all of it.': 'مستخدمون استخدموا 80% أو أكثر من ميزانيتهم أو حدهم، لكن ليس كله.',
   'Near when 80% ≤ amount used ÷ limit < 100%': 'قريب عندما يكون 80% ≤ المبلغ المستخدَم ÷ الحد < 100%',
-  'When a user has several budgets, the fullest one counts.': 'عندما يكون للمستخدم عدة ميزانيات، تُحسب الأكثر امتلاءً.',
+  'When a user has several limits, only the most specific one counts: their own budget, then their cost center limit, then the limit for each user.':
+    'عندما يكون للمستخدم عدة حدود، يُحسب أدقها فقط: ميزانيته الخاصة، ثم حد مركز التكلفة، ثم الحد لكل مستخدم.',
   'A user with a limit of $30 has used $26. That is 87%, so the user is near the limit.': 'مستخدم حده $30 استخدم $26. هذا 87%، فهو قريب من الحد.',
 
   // How full each budget is
@@ -87,13 +88,55 @@ const arabic: Dict = {
     'في اليوم 20 استُخدم من الميزانية $560 ويُدفع $30 إضافيًا في اليوم. ينتهي الشهر عند نحو $860، فوق ميزانية $800.',
 
   // Users and their budgets
-  'Every user who has a budget of their own or a limit for each user, with how much of it they used.': 'كل مستخدم له ميزانية خاصة أو حد لكل مستخدم، مع ما استخدمه منها.',
+  'Every user that GitHub listed against a limit for users, with how much of it they used.': 'كل مستخدم أدرجه GitHub تحت حد للمستخدمين، مع ما استخدمه منه.',
   'Share used = amount used by the user ÷ limit of the user': 'الحصة المستخدمة = المبلغ الذي استخدمه المستخدم ÷ حد المستخدم',
-  'A user with several budgets is shown once, with the fullest budget.': 'يظهر المستخدم الذي له عدة ميزانيات مرة واحدة، مع الميزانية الأكثر امتلاءً.',
+  'A user with several limits is shown once, with the most specific one: their own budget, then their cost center limit, then the limit for each user.':
+    'يظهر المستخدم الذي له عدة حدود مرة واحدة، مع أدقها: ميزانيته الخاصة، ثم حد مركز التكلفة، ثم الحد لكل مستخدم.',
   'The four boxes count the users in each level.': 'تعدّ المربعات الأربعة المستخدمين في كل مستوى.',
   'Users with a special limit that differs from the shared one are left out, because GitHub does not say their amount used.':
     'يُستبعد المستخدمون الذين لهم حد خاص يختلف عن الحد المشترك، لأن GitHub لا يذكر المبلغ الذي استخدموه.',
   'The limit for each user is $30. A user who used $12 is at 40%, under 50%.': 'الحد لكل مستخدم $30. المستخدم الذي استخدم $12 عند 40%، أي أقل من 50%.',
+
+  // Limit map
+  'Every AI credit limit for GitHub Copilot on one map, read from the bottom up in the order GitHub checks them. At the bottom, each user is a small glass in the group of the one limit that holds them: their own budget, their cost center, the limit for each user, or no limit. Above them are the included credits, then the spending limits of cost centers, organizations and repositories, and the spending limit of the enterprise at the top. Each glass fills to the share used.':
+    'كل حدود أرصدة الذكاء الاصطناعي في GitHub Copilot على خريطة واحدة، تُقرأ من الأسفل إلى الأعلى بالترتيب الذي يفحصها به GitHub. في الأسفل، كل مستخدم كأس صغيرة في مجموعة الحد الوحيد الذي يخضع له: ميزانيته الخاصة، أو مركز التكلفة الخاص به، أو الحد لكل مستخدم، أو بلا حد. وفوقهم الأرصدة المشمولة، ثم حدود الإنفاق لمراكز التكلفة والمؤسسات والمستودعات، ثم حد الإنفاق للمؤسسة الكبرى في الأعلى. وكل كأس تمتلئ بقدر الحصة المستخدمة.',
+  'Limit of a user = own budget, else cost center limit, else limit for each user; fill of a glass = amount used ÷ limit':
+    'حد المستخدم = الميزانية الخاصة، وإلا حد مركز التكلفة، وإلا الحد لكل مستخدم؛ تعبئة الكأس = المبلغ المستخدَم ÷ الحد',
+  'Limits for users cap all AI credit usage of one user, included credits too, and always stop usage.':
+    'تحدّ حدود المستخدمين كل استخدام المستخدم لأرصدة الذكاء الاصطناعي، والأرصدة المشمولة أيضًا، وتوقف الاستخدام دائمًا.',
+  'Included credits pay for the usage while they last. Only the rest is billed.': 'تدفع الأرصدة المشمولة ثمن الاستخدام ما دامت متاحة. ولا يُفوتر إلا الباقي.',
+  'Spending limits (cost center, organization, repository, enterprise) cap the amount billed. They stop usage only when set to stop usage. A large glass fills to the share used of each spending limit, as GitHub showed it.':
+    'تحدّ حدود الإنفاق (مركز التكلفة، المؤسسة، المستودع، المؤسسة الكبرى) المبلغ المدفوع إضافيًا. ولا توقف الاستخدام إلا إذا ضُبطت لإيقافه. وتمتلئ الكأس الكبيرة بالحصة المستخدمة من كل حد إنفاق، كما أظهرها GitHub.',
+  'The cost center of a user comes from the list GitHub gave for the cost center limit, else the user, team or organization in the cost center, else the usage report. The organizations and repositories of a user come from their seats and from the usage report.':
+    'يُؤخذ مركز تكلفة المستخدم من القائمة التي أعطاها GitHub لحد مركز التكلفة، وإلا من المستخدم أو الفريق أو المؤسسة في مركز التكلفة، وإلا من تقرير الاستخدام. وتُؤخذ مؤسسات المستخدم ومستودعاته من مقاعده ومن تقرير الاستخدام.',
+  'Users held to a limit are users with usage in the month of the data or listed by GitHub. A user glass fills to the amount GitHub showed, or else the usage in the report, divided by their limit. Its color shows the level: under 50%, 50% to 80%, 80% to 100%, or used up. A user with no limit has an empty glass with a dashed line.':
+    'المستخدمون الخاضعون لحد هم من لهم استخدام في شهر البيانات أو أدرجهم GitHub. وتمتلئ كأس المستخدم بالمبلغ الذي أظهره GitHub، وإلا بالاستخدام في التقرير، مقسومًا على حده. ويدل لونها على المستوى: أقل من 50%، أو من 50% إلى 80%، أو من 80% إلى 100%، أو نفد. والمستخدم الذي لا حد له كأسه فارغة بخط متقطع.',
+  'Select a user, a group or a glass to see every limit that holds it. Each one gets the number of its step in the order GitHub checks them, the line between the steps moves up, and the rest fades. The side panel explains each step.':
+    'اختر مستخدمًا أو مجموعة أو كأسًا لترى كل حد يخضع له. يأخذ كل حد رقم خطوته بالترتيب الذي يفحصها به GitHub، ويتحرك الخط بين الخطوات إلى الأعلى، ويبهت الباقي. وتشرح اللوحة الجانبية كل خطوة.',
+  'Play the month to see the user glasses fill day by day. Each day uses the usage report, included credits too, because GitHub gives only the amount used so far. The large glasses keep what GitHub showed when the data was collected.':
+    'شغّل الشهر لترى كؤوس المستخدمين تمتلئ يومًا بعد يوم. يعتمد كل يوم على تقرير الاستخدام، مع الأرصدة المشمولة، لأن GitHub لا يعطي إلا المبلغ المستخدَم حتى الآن. وتبقى الكؤوس الكبيرة على ما أظهره GitHub عند جمع البيانات.',
+  'Own credit share means the cost center may use only the included credits of its own members.': '«حصة أرصدة خاصة» تعني أن مركز التكلفة يستخدم الأرصدة المشمولة لأعضائه فقط.',
+  'When a user is in teams or organizations of different cost centers, the data file does not say which one GitHub picked, so the usage report decides.':
+    'عندما يكون المستخدم في فرق أو مؤسسات تتبع مراكز تكلفة مختلفة، لا يذكر ملف البيانات أيها اختار GitHub، لذلك يحسم تقرير الاستخدام الأمر.',
+  'The filters do not change this picture.': 'لا تغيّر عوامل التصفية هذه الصورة.',
+  'The enterprise has a spending limit of $5,000. Mobile Studio has a limit of $20 for each user, and everyone else has $30. Select a Mobile Studio user who used $16: their glass is 80% full, and the map marks the Mobile Studio spending limit as step 3 and the enterprise as step 4.':
+    'للمؤسسة الكبرى حد إنفاق $5,000. ولـ Mobile Studio حد $20 لكل مستخدم، ولكل الآخرين $30. اختر مستخدمًا من Mobile Studio استخدم $16: كأسه ممتلئة بنسبة 80%، وتعلّم الخريطة حد إنفاق Mobile Studio بالخطوة 3 والمؤسسة الكبرى بالخطوة 4.',
+
+  // AI credit limit of a user
+  'AI credit limit of a user': 'حد أرصدة الذكاء الاصطناعي لمستخدم',
+  'The most specific limit GitHub holds this user to in the month of the data, shown as their target: their own budget, their cost center limit or the limit for each user.':
+    'أدق حد يُخضع GitHub له هذا المستخدم في شهر البيانات، ويظهر هدفًا له: ميزانيته الخاصة، أو حد مركز التكلفة، أو الحد لكل مستخدم.',
+  'Share used = amount used this month ÷ limit; projected = amount used + usage per day × days left':
+    'الحصة المستخدمة = المبلغ المستخدَم هذا الشهر ÷ الحد؛ المتوقع = المبلغ المستخدَم + الاستخدام في اليوم × الأيام المتبقية',
+  'The amount used is what GitHub showed for the user. When GitHub did not list the user, it is the usage of the user in the report this month, included credits too.':
+    'المبلغ المستخدَم هو ما أظهره GitHub للمستخدم. وعندما لا يُدرج GitHub المستخدم، يكون استخدامه في التقرير هذا الشهر، والأرصدة المشمولة أيضًا.',
+  'Usage per day is the average of the last 7 days in the report.': 'الاستخدام في اليوم هو متوسط آخر 7 أيام في التقرير.',
+  'Reaches the limit is the day the projection crosses the limit.': '«يبلغ الحد» هو اليوم الذي يتجاوز فيه التوقع الحد.',
+  'Replaces lists the broader limits that no longer apply to this user.': '«يحل محل» تسرد الحدود الأوسع التي لم تعد تنطبق على هذا المستخدم.',
+  'The usage report can differ a little from what GitHub counts against a limit.': 'قد يختلف تقرير الاستخدام قليلًا عما يحسبه GitHub على الحد.',
+  'The filters do not change this section.': 'لا تغيّر عوامل التصفية هذا القسم.',
+  'The limit for each user is $30. By day 10 of a 31-day month, a user used $12 and uses about $1.50 a day. The month ends at about $43.50, and the user reaches the limit on day 22.':
+    'الحد لكل مستخدم $30. بحلول اليوم 10 من شهر من 31 يومًا، استخدم مستخدم $12 ويستخدم نحو $1.50 في اليوم. ينتهي الشهر عند نحو $43.50، ويبلغ المستخدم الحد في اليوم 22.',
 
   // Billed usage with no budget
   'Organizations and cost centers with billed usage in the month of the data that have no budget for GitHub Copilot of their own.':

@@ -1,6 +1,7 @@
 import { parseLicenseValue } from '../licenses/parse';
 import type { LicenseParse } from '../licenses/types';
-import type { DataStore } from '../types';
+import { BLANK, type DataStore } from '../types';
+import { heldUsers } from './limits';
 import { monthEndDay, monthIndexOf, monthStartDay, parseIsoDay } from '../utils/date';
 import type { AuditEvent, BillingAmounts, BillingMonth, Collection, CollectionSource, GitHubBudget, MetricsUser, SeatSummary } from './types';
 
@@ -18,7 +19,7 @@ export interface MonthCheck {
   /**
    * match: the same amounts. lower: the report has less than GitHub billing. higher: the report has more.
    * partial: the report covers only part of the month. open: the month was not over when the data was collected.
-   * outside: the report has no days in the month. missing: the GitHub data file has no billing for the month.
+   * outside: the report has no days in the month or no matching organization. missing: the GitHub data file has no billing for the month.
    */
   status: MonthCheckStatus;
   report: BillingAmounts;
@@ -106,7 +107,10 @@ export interface AuditOverview {
 /** What the GitHub data file adds to the loaded usage report. */
 export interface GitHubData {
   collection: Collection;
-  /** The AI credit budget of the same enterprise or organization, used as the monthly budget when Settings has none. */
+  /**
+   * The AI credit budget of the same enterprise or organization, used as the monthly budget when Settings has none.
+   * Null when the file covers only some organizations of the report, because the budget does not limit the others.
+   */
   budget: GitHubBudget | null;
   /** Budgets about GitHub Copilot: the one in use first, then the others by scope, name and amount. */
   copilotBudgets: GitHubBudget[];
@@ -174,6 +178,20 @@ function organizationFilter(store: DataStore, organizations: readonly string[]):
 const fileOrganizations = (collection: Collection): string[] =>
   collection.header.scope === 'organization' ? (collection.header.organizations.length > 0 ? collection.header.organizations : collection.organizations) : [];
 
+/** The report organizations of an organization file, as flags by dictionary id. Null for an enterprise file, or when no report organization matches. */
+export const reportOrganizations = (collection: Collection, store: DataStore): Uint8Array | null =>
+  collection.header.scope === 'organization' ? (organizationFilter(store, fileOrganizations(collection))?.allowed ?? null) : null;
+
+/**
+ * True when the budgets of the file cover all usage of the report: an enterprise file, or an organization file that
+ * has every organization of the report. A budget of one organization says nothing about the others.
+ */
+export function fileCoversReport(collection: Collection, store: DataStore): boolean {
+  if (collection.header.scope === 'enterprise') return true;
+  const organizations = new Set(fileOrganizations(collection).map((name) => name.toLowerCase()));
+  return store.dicts.org.values.every((name) => name === BLANK || organizations.has(name.toLowerCase()));
+}
+
 /** Usage report totals by month index, over every row or only the given organizations. */
 function reportTotals(store: DataStore, allowed: Uint8Array | null): Map<number, BillingAmounts> {
   const totals = new Map<number, BillingAmounts>();
@@ -205,7 +223,9 @@ function compareAmounts(report: BillingAmounts, github: BillingAmounts): 'match'
 /** Sets every billing month of the GitHub data file against the usage report. */
 export function checkMonths(collection: Collection, store: DataStore): { months: MonthCheck[]; checkedOrgs: string[] } {
   const filter = organizationFilter(store, fileOrganizations(collection));
-  const totals = reportTotals(store, filter?.allowed ?? null);
+  const organizationScoped = collection.header.scope === 'organization';
+  const allowed = organizationScoped ? filter?.allowed ?? new Uint8Array(store.dicts.org.values.length) : null;
+  const totals = reportTotals(store, allowed);
   const collectedDay = parseIsoDay(collection.header.day);
   const months = collection.header.months.map((month): MonthCheck => {
     const monthIndex = monthOfKey(month);
@@ -216,6 +236,7 @@ export function checkMonths(collection: Collection, store: DataStore): { months:
     const gaps = { grossGap: github ? github.gross - report.gross : 0, netGap: github ? github.net - report.net : 0 };
     let status: MonthCheckStatus;
     if (github === null) status = 'missing';
+    else if (organizationScoped && filter === null) status = 'outside';
     else if (end >= collectedDay) status = 'open';
     else if (store.n === 0 || store.maxDay < start || store.minDay > end) status = 'outside';
     else if (store.minDay > start + EDGE_DAYS || store.maxDay < end - EDGE_DAYS) status = 'partial';
@@ -264,26 +285,12 @@ export function pickBudget(collection: Collection): GitHubBudget | null {
   return best;
 }
 
-/** Users who have spent their budget: per-user states of shared budgets, and budgets for a single user. */
+/** Users who have used up the limit GitHub holds them to: the most specific of their own budget, their cost center's limit and the limit for each user. */
 export function usersAtLimit(collection: Collection): UserAtLimit[] {
-  const budgets = new Map(collection.budgets.map((budget) => [budget.id, budget]));
-  const byLogin = new Map<string, UserAtLimit>();
-  const keep = (entry: UserAtLimit): void => {
-    const key = entry.login.toLowerCase();
-    const had = byLogin.get(key);
-    if (had === undefined || entry.consumed / entry.limit > had.consumed / had.limit) byLogin.set(key, entry);
-  };
-  for (const state of collection.budgetUsers) {
-    const budget = budgets.get(state.budgetId);
-    if (budget !== undefined && !budget.copilot) continue;
-    if (state.limit > 0 && state.consumed >= state.limit) keep({ login: state.login, consumed: state.consumed, limit: state.limit });
-  }
-  for (const budget of collection.budgets) {
-    const login = budget.user ?? budget.entity;
-    if (budget.scope !== 'user' || !budget.copilot || login === '' || budget.consumed === null || budget.amount <= 0) continue;
-    if (budget.consumed >= budget.amount) keep({ login, consumed: budget.consumed, limit: budget.amount });
-  }
-  return [...byLogin.values()].sort((a, b) => b.consumed / b.limit - a.consumed / a.limit || a.login.localeCompare(b.login));
+  return heldUsers(collection)
+    .filter((user) => user.consumed >= user.limit)
+    .map((user) => ({ login: user.login, consumed: user.consumed, limit: user.limit }))
+    .sort((a, b) => b.consumed / b.limit - a.consumed / a.limit || a.login.localeCompare(b.login));
 }
 
 const SCOPE_ORDER = ['enterprise', 'organization', 'cost_center', 'multi_user_customer', 'multi_user_cost_center', 'repository', 'user'];
@@ -401,7 +408,7 @@ function auditOverview(events: readonly AuditEvent[]): AuditOverview | null {
 
 /** Everything the app shows from a GitHub data file, set against the loaded usage report. */
 export function deriveGitHub(collection: Collection, store: DataStore): GitHubData {
-  const budget = pickBudget(collection);
+  const budget = fileCoversReport(collection, store) ? pickBudget(collection) : null;
   const copilot = collection.budgets.filter((item) => item.copilot);
   const { months, checkedOrgs } = checkMonths(collection, store);
   return {

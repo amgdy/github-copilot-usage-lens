@@ -6,10 +6,11 @@ GitHub Copilot Usage Lens: data collector for Windows, macOS and Linux.
 .DESCRIPTION
 The AI usage report shows who used which model and what it cost. It does not show your seats and seat types, seat
 changes, budgets, cost centers, members, or the activity that is not billed, such as code completions. This script
-reads that data from GitHub with the GitHub CLI (gh) and saves it in one file. Load your usage report in
-GitHub Copilot Usage Lens, then drop this file on the page.
+reads that data from GitHub with the GitHub CLI (gh) and saves it in one file. For an enterprise, the file holds the
+AI usage report too, so you drop only this file on GitHub Copilot Usage Lens.
 
-It only reads. It changes nothing on GitHub, and the file stays on this computer.
+It reads and changes no settings on GitHub. When there is no recent AI usage report, it asks GitHub to make one, as
+the billing page does. The file stays on this computer.
 
 Needs Windows PowerShell 5.1 or PowerShell 7, and the GitHub CLI (https://cli.github.com).
 scripts/collect.sh does the same with bash. Both scripts write the same file format.
@@ -19,6 +20,11 @@ Run with -Help to see every option.
 powershell -ExecutionPolicy Bypass -File scripts\collect.ps1
 
 Asks what to collect. Use this in Windows PowerShell.
+
+.EXAMPLE
+powershell -ExecutionPolicy Bypass -Command "& ([scriptblock]::Create((irm https://raw.githubusercontent.com/amgdy/github-copilot-usage-lens/main/scripts/collect.ps1))) -Enterprise octocorp"
+
+Runs the script straight from GitHub, with no download, and collects the enterprise octocorp.
 
 .EXAMPLE
 pwsh -File scripts/collect.ps1 -Enterprise octocorp
@@ -55,6 +61,13 @@ Set-StrictMode -Version 2.0
 
 # Which options were typed. -Teams and -DailyMetrics have three states: given, given as $false, or not given (ask).
 $script:BoundNames = @($PSBoundParameters.Keys)
+# The values of the options. The functions read them here: when the script runs straight from GitHub as a script
+# block, the parameters are not in the script scope.
+$script:OptionValues = @{
+  Enterprise = $Enterprise; Org = $Org; Months = $Months; DailyMetrics = $DailyMetrics; Teams = $Teams
+  Hostname = $Hostname; Output = $Output; Plain = $Plain; Skip = $Skip; Only = $Only; ListSources = $ListSources
+  Yes = $Yes; Help = $Help; Version = $Version; RemainingArguments = $RemainingArguments
+}
 
 $script:CollectorVersion = '1.0.0'
 $script:FormatName = 'github-copilot-usage-lens-data'
@@ -66,8 +79,11 @@ $script:MinGhMinor = 40
 $script:MetricsFirstDay = '2025-10-10'
 $script:MaxMonths = 24
 $script:MaxPages = 200
-$script:AllSources = @('organizations', 'seats', 'seat-summary', 'members', 'teams', 'budgets', 'cost-centers',
-  'ai-credit-usage', 'usage-summary', 'billing-usage', 'user-metrics', 'scope-metrics', 'user-teams', 'audit-log')
+# Lines of the AI usage report in each record of the file.
+$script:ReportChunkLines = 1000
+$script:AllSources = @('usage-report', 'organizations', 'seats', 'seat-summary', 'members', 'teams', 'budgets',
+  'cost-centers', 'ai-credit-usage', 'usage-summary', 'billing-usage', 'user-metrics', 'scope-metrics', 'user-teams',
+  'audit-log')
 $script:Invariant = [Globalization.CultureInfo]::InvariantCulture
 $script:Utf8 = New-Object System.Text.UTF8Encoding($false)
 $script:SpaceAndTab = [char[]]@(32, 9)
@@ -96,6 +112,9 @@ $script:ShowVersion = $false
 $script:Interactive = $false
 $script:UseColor = $false
 $script:RetrySeconds = 5
+# How long to wait for GitHub to make the AI usage reports, and how often to ask. GitHub needs about three minutes.
+$script:ReportWaitSeconds = 900
+$script:ReportPollSeconds = 20
 
 # What the run finds out and collects.
 $script:WorkDir = ''
@@ -117,6 +136,10 @@ $script:GhErrorText = ''
 $script:OutLines = New-Object 'System.Collections.Generic.List[string]'
 $script:ControlLines = New-Object 'System.Collections.Generic.List[string]'
 $script:RecordsTotal = 0
+$script:UsageReportRecords = 0
+$script:UsageReportMonths = 0
+$script:UsageReports = New-Object 'System.Collections.Generic.List[object]'
+$script:ReportRequestedAt = 0
 $script:ContextScope = ''
 $script:ContextTarget = ''
 $script:ContextMonth = ''
@@ -237,6 +260,14 @@ $script:AuditFilter = @'
 
 $script:TeamsFilter = '.[] | ({slug, name} | wrap("team")), "#team \(.slug)"'
 
+# One line per AI usage report on the billing page: id, first day, last day and status.
+$script:ReportListFilter = @'
+(.usage_report_exports // [])[] | select(.report_type == "ai_credit")
+  | "#report \(.id)\t\((.start_date // "")[0:10])\t\((.end_date // "")[0:10])\t\(.status // "")"
+'@
+
+$script:ReportStatusFilter = '"#status \(.status // "")", ((.download_urls // [])[])'
+
 $script:TeamMembersFilter = '.[] | {login: (.login // .user.login)} | select(.login != null) | wrap("team-member")'
 
 $script:ReportFilter = '(.download_links // [])[], "#first \(.report_start_day // .report_day // "")", "#last \(.report_end_day // .report_day // "")"'
@@ -251,7 +282,7 @@ $script:MembershipsFilter = '.[] | select(.state == "active" and (.role == "admi
 
 # A copy of this file with Windows line ends must still send the same filters.
 foreach ($filterName in @('JqWrap', 'SeatFilter', 'OrganizationsQuery', 'EnterpriseMembersQuery', 'EnterpriseMembersFilter',
-    'BudgetFilter', 'UsageSummaryFilter', 'BillingUsageFilter', 'AuditFilter', 'AccountsQuery')) {
+    'BudgetFilter', 'UsageSummaryFilter', 'BillingUsageFilter', 'AuditFilter', 'ReportListFilter', 'AccountsQuery')) {
   $filterVariable = Get-Variable -Name $filterName -Scope Script
   $filterVariable.Value = ([string]$filterVariable.Value).Replace("`r", '')
 }
@@ -281,11 +312,16 @@ GitHub Copilot Usage Lens: data collector
 
 Reads the GitHub data that the AI usage report does not have: GitHub Copilot seats and seat types, seat totals and
 policies, members, budgets, cost centers, monthly billing, activity per user (including code completions) and seat
-changes from the audit log. Saves it in one file for GitHub Copilot Usage Lens. It only reads and changes nothing.
+changes from the audit log. For an enterprise, it adds the AI usage report of each month too. Saves it all in one file
+for GitHub Copilot Usage Lens. It changes no settings on GitHub. When there is no recent AI usage report, it asks
+GitHub to make one, as the billing page does.
 
 Usage:
   powershell -ExecutionPolicy Bypass -File scripts\collect.ps1 [options]     Windows PowerShell 5.1
   pwsh -File scripts/collect.ps1 [options]                                   PowerShell 7 on any system
+
+To run it straight from GitHub, with no download, put the options before the last quote:
+  powershell -ExecutionPolicy Bypass -Command "& ([scriptblock]::Create((irm https://raw.githubusercontent.com/amgdy/github-copilot-usage-lens/main/scripts/collect.ps1))) [options]"
 
 -ExecutionPolicy Bypass lets Windows run this one script. It changes no settings.
 With no options, the script asks what to collect.
@@ -320,6 +356,7 @@ The file holds GitHub logins and activity. Keep it safe and delete it when you a
 }
 
 $script:SourceTable = @(
+  @('usage-report', 'The AI usage report (CSV) of each month, enterprises only', 'enterprise owner or billing manager (manage_billing:enterprise)'),
   @('organizations', 'Organizations in the enterprise', 'enterprise owner (read:enterprise)'),
   @('seats', 'GitHub Copilot seats: user, plan, start, last activity', 'owner or billing manager (manage_billing:copilot)'),
   @('seat-summary', 'Seat totals and GitHub Copilot policies per organization', 'organization owner (read:org)'),
@@ -344,6 +381,9 @@ function Show-Sources {
   Write-Line ''
   Write-Line 'For organizations, the billing sources need an organization owner or billing manager. The activity sources need the'
   Write-Line 'usage metrics policy for GitHub Copilot set to "Enabled everywhere".'
+  Write-Line ''
+  Write-Line 'usage-report uses a report from the last 31 days when one covers the month. Otherwise it asks GitHub to make one,'
+  Write-Line 'which takes a few minutes and adds the report to the billing page. It changes no settings.'
 }
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -440,52 +480,52 @@ function Read-ExtraArguments {
 function Read-Options {
   if ($env:GH_HOST) { $script:GitHubHost = [string]$env:GH_HOST }
   if (Test-Bound 'Enterprise') {
-    Assert-Value '-Enterprise' $script:Enterprise
-    $script:EnterpriseSlug = $script:Enterprise
+    Assert-Value '-Enterprise' $script:OptionValues.Enterprise
+    $script:EnterpriseSlug = $script:OptionValues.Enterprise
   }
   if (Test-Bound 'Org') {
-    foreach ($value in $script:Org) {
+    foreach ($value in $script:OptionValues.Org) {
       Assert-Value '-Org' $value
       Add-OrganizationNames $value
     }
   }
   if (Test-Bound 'Months') {
-    Assert-Value '-Months' $script:Months
-    $script:MonthText = $script:Months
+    Assert-Value '-Months' $script:OptionValues.Months
+    $script:MonthText = $script:OptionValues.Months
   }
   if (Test-Bound 'Hostname') {
-    Assert-Value '-Hostname' $script:Hostname
-    $script:GitHubHost = $script:Hostname
+    Assert-Value '-Hostname' $script:OptionValues.Hostname
+    $script:GitHubHost = $script:OptionValues.Hostname
     $script:HostGiven = $true
   }
   if (Test-Bound 'Output') {
-    Assert-Value '-Output' $script:Output
-    $script:OutputPath = $script:Output
+    Assert-Value '-Output' $script:OptionValues.Output
+    $script:OutputPath = $script:OptionValues.Output
   }
   if (Test-Bound 'Skip') {
-    foreach ($value in $script:Skip) {
+    foreach ($value in $script:OptionValues.Skip) {
       Assert-Value '-Skip' $value
       Add-SourceNames $script:SkipSources $value
     }
   }
   if (Test-Bound 'Only') {
-    foreach ($value in $script:Only) {
+    foreach ($value in $script:OptionValues.Only) {
       Assert-Value '-Only' $value
       Add-SourceNames $script:OnlySources $value
     }
   }
   if (Test-Bound 'DailyMetrics') {
-    if ($script:DailyMetrics.IsPresent) { $script:ReadDailyMetrics = 'yes' } else { $script:ReadDailyMetrics = 'no' }
+    if ($script:OptionValues.DailyMetrics.IsPresent) { $script:ReadDailyMetrics = 'yes' } else { $script:ReadDailyMetrics = 'no' }
   }
   if (Test-Bound 'Teams') {
-    if ($script:Teams.IsPresent) { $script:WithTeams = 'yes' } else { $script:WithTeams = 'no' }
+    if ($script:OptionValues.Teams.IsPresent) { $script:WithTeams = 'yes' } else { $script:WithTeams = 'no' }
   }
-  $script:PlainText = $script:Plain.IsPresent
-  $script:AssumeYes = $script:Yes.IsPresent
-  $script:ShowHelp = $script:Help.IsPresent
-  $script:ShowSources = $script:ListSources.IsPresent
-  $script:ShowVersion = $script:Version.IsPresent
-  Read-ExtraArguments $script:RemainingArguments
+  $script:PlainText = $script:OptionValues.Plain.IsPresent
+  $script:AssumeYes = $script:OptionValues.Yes.IsPresent
+  $script:ShowHelp = $script:OptionValues.Help.IsPresent
+  $script:ShowSources = $script:OptionValues.ListSources.IsPresent
+  $script:ShowVersion = $script:OptionValues.Version.IsPresent
+  Read-ExtraArguments $script:OptionValues.RemainingArguments
 }
 
 function Test-ValidName {
@@ -510,6 +550,10 @@ function Assert-Options {
   }
   $retryText = [string]$env:USAGE_LENS_RETRY_SECONDS
   if ($retryText -cmatch '^[0-9]{1,4}\z') { $script:RetrySeconds = [int]$retryText } else { $script:RetrySeconds = 5 }
+  $waitText = [string]$env:USAGE_LENS_REPORT_WAIT_SECONDS
+  if ($waitText -cmatch '^[0-9]{1,9}\z') { $script:ReportWaitSeconds = [int]$waitText } else { $script:ReportWaitSeconds = 900 }
+  $pollText = [string]$env:USAGE_LENS_REPORT_POLL_SECONDS
+  if ($pollText -cmatch '^[0-9]{1,9}\z') { $script:ReportPollSeconds = [int]$pollText } else { $script:ReportPollSeconds = 20 }
   foreach ($name in (@($script:SkipSources) + @($script:OnlySources))) {
     if ($script:AllSources -notcontains $name) {
       Stop-WithError ('Unknown source: ' + $name + '. Run with -ListSources to see them.')
@@ -1111,7 +1155,8 @@ function Add-SkippedSources {
       } else {
         Add-Status $name 'skipped' 0 0 'Not selected.' ''
       }
-    } elseif (-not $script:EnterpriseSlug -and ($name -eq 'organizations' -or $name -eq 'cost-centers')) {
+    } elseif (-not $script:EnterpriseSlug -and ($name -eq 'organizations' -or $name -eq 'cost-centers' -or
+        $name -eq 'usage-report')) {
       Add-Status $name 'skipped' 0 0 'Only for enterprises.' ''
     }
   }
@@ -1272,12 +1317,272 @@ function Get-SeatOrganizations {
   return $names.ToArray()
 }
 
+# Whole seconds since 1970, as date +%s prints them.
+function Get-UnixSeconds {
+  $epoch = [DateTime]::new(1970, 1, 1, 0, 0, 0, [DateTimeKind]::Utc)
+  return [long][Math]::Floor(([DateTime]::UtcNow - $epoch).TotalSeconds)
+}
+
+# Splits Text, which ends with a line break, into JSON texts as scripts/collect.sh does with tr and awk: control
+# characters become spaces, one CR at the end of each line goes, and backslash, quote, tab and CR are escaped. The last
+# item is the empty text after the last line break.
+function ConvertTo-UsageLines {
+  param([string]$Text)
+  $value = [regex]::Replace($Text.Replace("`r`n", "`n"), '[\x00-\x08\x0B\x0C\x0E-\x1F]', ' ')
+  $value = $value.Replace('\', '\\').Replace('"', '\"').Replace("`t", '\t').Replace("`r", '\r')
+  return , $value.Split([char]10)
+}
+
+# Adds the lines of one AI usage report file (CSV) to Writer, ReportChunkLines lines per record. Each line becomes a
+# JSON text, so the app can put the file back together. Lines end at LF, as awk reads them, and a byte order mark is
+# kept as it is. Returns the number of lines and of records.
+function Add-UsageReportFile {
+  param([string]$Month, [string]$ReportId, [int]$FileNumber, [string]$Path, $Writer)
+  $prefix = '{"kind":"usage-report","scope":"' + $script:ContextScope + '","target":"' + $script:ContextTarget +
+    '","month":"' + $Month + '","record":{"report":"' + $ReportId + '","file":' + $FileNumber + ',"part":'
+  $chunkSize = $script:ReportChunkLines
+  $pending = New-Object 'System.Collections.Generic.List[string]'
+  $lineCount = 0
+  $partCount = 0
+  $carry = ''
+  $buffer = New-Object 'char[]' 1048576
+  $reader = New-Object System.IO.StreamReader($Path, $script:Utf8, $false)
+  try {
+    $atEnd = $false
+    while (-not $atEnd) {
+      $readCount = $reader.Read($buffer, 0, $buffer.Length)
+      if ($readCount -gt 0) {
+        $text = $carry + [string]::new($buffer, 0, $readCount)
+        $lastBreak = $text.LastIndexOf([char]10)
+        if ($lastBreak -lt 0) {
+          $carry = $text
+          continue
+        }
+        $carry = $text.Substring($lastBreak + 1)
+        $text = $text.Substring(0, $lastBreak + 1)
+      } else {
+        # A last line without a line break counts too, as in awk.
+        $atEnd = $true
+        $text = ''
+        if ($carry.Length -gt 0) { $text = $carry + "`n" }
+      }
+      if ($text.Length -gt 0) {
+        $lines = ConvertTo-UsageLines $text
+        $pending.AddRange($lines)
+        $pending.RemoveAt($pending.Count - 1)
+        $lineCount += $lines.Length - 1
+      }
+      $items = $pending.ToArray()
+      $written = 0
+      while ($items.Length - $written -ge $chunkSize -or ($atEnd -and $written -lt $items.Length)) {
+        $size = [Math]::Min($chunkSize, $items.Length - $written)
+        $partCount++
+        $Writer.Write($prefix + $partCount + ',"lines":["' + [string]::Join('","', $items, $written, $size) + '"]}}' + "`n")
+        $written += $size
+      }
+      $pending.RemoveRange(0, $written)
+    }
+  } finally {
+    $reader.Dispose()
+  }
+  return [pscustomobject]@{ Lines = $lineCount; Parts = $partCount }
+}
+
+# Finds the AI usage report of every chosen month on the billing page (GitHub keeps them for 31 days), or asks GitHub
+# to make one. GitHub makes them while the other data is read, and Read-UsageReports downloads them at the end.
+function Request-UsageReports {
+  param([string]$Base)
+  $script:UsageReports.Clear()
+  $script:ReportRequestedAt = Get-UnixSeconds
+  $ready = 0
+  $asked = 0
+  Start-Step 'AI usage report'
+  if (-not (Invoke-GhApi @($Base, '--jq', $script:ReportListFilter))) {
+    Add-Status 'usage-report' 'failed' 0 $script:LastHttp $script:LastError $Base
+    Complete-Step
+    return
+  }
+  $listed = @(Get-ControlValues $script:GhLines 'report')
+  foreach ($month in $script:MonthKeys) {
+    $first = $month + '-01'
+    $dayCount = [DateTime]::DaysInMonth([int]$month.Substring(0, 4), [int]$month.Substring(5, 2))
+    $monthEnd = $month + '-' + $dayCount.ToString('00', $script:Invariant)
+    $last = $monthEnd
+    if ([string]::CompareOrdinal($last, $script:Today) -gt 0) { $last = $script:Today }
+    # A finished report first, then one GitHub is still making. It must cover the whole month and no other month.
+    $found = ''
+    $processingId = ''
+    $finishedFound = $false
+    foreach ($entry in $listed) {
+      $fields = $entry.Split([char]9)
+      if ($fields.Count -lt 4) { continue }
+      if ($fields[1] -cne $first -or [string]::CompareOrdinal($fields[2], $last) -lt 0 -or
+        [string]::CompareOrdinal($fields[2], $monthEnd) -gt 0) { continue }
+      if ($fields[3] -ceq 'completed') {
+        $found = $fields[0]
+        $finishedFound = $true
+        break
+      }
+      if ($fields[3] -ceq 'processing' -and -not $processingId) { $processingId = $fields[0] }
+    }
+    if (-not $finishedFound) { $found = $processingId }
+    if ($found -cmatch '^[A-Za-z0-9-]+\z') {
+      $script:UsageReports.Add([pscustomobject]@{ Month = $month; ReportId = $found })
+      $ready++
+      continue
+    }
+    $script:ContextMonth = $month
+    if (Invoke-GhApi @($Base, '--method', 'POST', '-f', 'report_type=ai_credit', '-f', ('start_date=' + $first), '-f',
+        ('end_date=' + $last), '--jq', '.id // ""')) {
+      $reportId = ''
+      if ($script:GhLines.Count -gt 0) { $reportId = ([string]$script:GhLines[0]).Replace("`r", '') }
+      if ($reportId -cmatch '^[A-Za-z0-9-]+\z') {
+        $script:UsageReports.Add([pscustomobject]@{ Month = $month; ReportId = $reportId })
+        $asked++
+      } else {
+        Add-Status 'usage-report' 'failed' 0 0 'GitHub did not say which report it makes.' $Base
+      }
+    } else {
+      Add-Status 'usage-report' 'failed' 0 $script:LastHttp $script:LastError $Base
+      if (Test-NoAccessYet) {
+        $script:ContextMonth = ''
+        break
+      }
+    }
+    $script:ContextMonth = ''
+  }
+  if ($script:UsageReports.Count -eq 0) {
+    Complete-Step
+    return
+  }
+  $summary = [string]$ready + ' found, ' + $asked + ' asked for'
+  if ($script:StepFailed -gt 0) {
+    Write-Text ($summary + ', ' + $script:StepFailed + ' failed') 'Yellow'
+    Write-Text ' '
+    Write-Line (Get-FailureText) 'DarkGray'
+  } else {
+    Write-Text $summary 'Green'
+    Write-Text ' '
+    Write-Line '(read at the end)' 'DarkGray'
+  }
+}
+
+# Downloads every file of one finished AI usage report. Nothing is kept unless every file worked.
+function Save-UsageReport {
+  param([string]$Month, [string]$ReportId, [string]$Endpoint, $StatusLines)
+  $links = New-Object 'System.Collections.Generic.List[string]'
+  foreach ($line in $StatusLines) {
+    if ($line.StartsWith('https://', [StringComparison]::Ordinal)) { $links.Add($line) }
+  }
+  if ($links.Count -eq 0) {
+    Add-Status 'usage-report' 'failed' 0 0 'GitHub gave no file for this report.' $Endpoint
+    return $false
+  }
+  $downloadPath = [System.IO.Path]::Combine($script:WorkDir, 'download')
+  $textPath = [System.IO.Path]::Combine($script:WorkDir, 'report.txt')
+  $chunksPath = [System.IO.Path]::Combine($script:WorkDir, 'usage-chunks')
+  $rowCount = 0
+  $chunkCount = 0
+  $fileNumber = 0
+  $chunkWriter = New-Object System.IO.StreamWriter($chunksPath, $false, $script:Utf8)
+  try {
+    foreach ($link in $links) {
+      $fileNumber++
+      [System.IO.File]::Delete($downloadPath)
+      [System.IO.File]::Delete($textPath)
+      if (-not (Save-Download $link $downloadPath)) {
+        Add-Status 'usage-report' 'failed' 0 0 ('Could not download the report file: ' + $script:DownloadError) $Endpoint
+        return $false
+      }
+      if (Test-GzipFile $downloadPath) {
+        if (-not (Expand-GzipFile $downloadPath $textPath)) {
+          Add-Status 'usage-report' 'failed' 0 0 'Could not unpack the report file.' $Endpoint
+          return $false
+        }
+      } else {
+        [System.IO.File]::Move($downloadPath, $textPath)
+      }
+      $counts = Add-UsageReportFile $Month $ReportId $fileNumber $textPath $chunkWriter
+      # The first line of each file names the columns.
+      if ($counts.Lines -gt 0) { $rowCount += $counts.Lines - 1 }
+      $chunkCount += $counts.Parts
+      $script:UsageReportRecords += $counts.Parts
+    }
+  } finally {
+    $chunkWriter.Dispose()
+  }
+  [System.IO.File]::Delete($downloadPath)
+  [System.IO.File]::Delete($textPath)
+  $script:RecordsWriter.Flush()
+  $chunks = [System.IO.File]::OpenRead($chunksPath)
+  try { $chunks.CopyTo($script:RecordsWriter.BaseStream) } finally { $chunks.Dispose() }
+  $script:RecordsTotal += $chunkCount
+  Add-Status 'usage-report' 'ok' $rowCount 200 '' $Endpoint
+  $script:UsageReportMonths++
+  return $true
+}
+
+# Waits until GitHub has made the AI usage reports, at most ReportWaitSeconds after they were asked for, and
+# downloads them. A report that is not ready by then is reported, and the next run uses it.
+function Read-UsageReports {
+  param([string]$Base)
+  if ($script:UsageReports.Count -eq 0) { return }
+  $deadline = $script:ReportRequestedAt + $script:ReportWaitSeconds
+  $pending = $script:UsageReports.ToArray()
+  $waitShown = $false
+  Start-Step 'AI usage report'
+  while ($true) {
+    $waiting = New-Object 'System.Collections.Generic.List[object]'
+    foreach ($report in $pending) {
+      $script:ContextMonth = $report.Month
+      $endpoint = $Base + '/' + $report.ReportId
+      if (-not (Invoke-GhApi @($endpoint, '--jq', $script:ReportStatusFilter))) {
+        Add-Status 'usage-report' 'failed' 0 $script:LastHttp $script:LastError $endpoint
+        continue
+      }
+      $statusLines = $script:GhLines
+      $states = @(Get-ControlValues $statusLines 'status')
+      $state = ''
+      if ($states.Count -gt 0) { $state = ([string]$states[0]).Replace("`r", '') }
+      if ($state -ceq 'completed') {
+        $null = Save-UsageReport $report.Month $report.ReportId $endpoint $statusLines
+      } elseif ($state -ceq 'processing') {
+        $waiting.Add($report)
+      } else {
+        Add-Status 'usage-report' 'failed' 0 0 'GitHub could not make the report. Run the script again.' $endpoint
+      }
+    }
+    $script:ContextMonth = ''
+    if ($waiting.Count -eq 0) { break }
+    if ((Get-UnixSeconds) -ge $deadline) {
+      foreach ($report in $waiting) {
+        $script:ContextMonth = $report.Month
+        Add-Status 'usage-report' 'failed' 0 0 ('GitHub is still making the report. Run the script again in a few ' +
+          'minutes. It uses the same report.') ($Base + '/' + $report.ReportId)
+      }
+      $script:ContextMonth = ''
+      break
+    }
+    if (-not $waitShown) {
+      Write-Text '(GitHub is making it, this takes a few minutes)' 'DarkGray'
+      Write-Text ' '
+      $waitShown = $true
+    }
+    Write-Text '.' 'DarkGray'
+    if ($script:ReportPollSeconds -gt 0) { Start-Sleep -Seconds $script:ReportPollSeconds }
+    $pending = $waiting.ToArray()
+  }
+  if ($waitShown) { Write-Text ' ' }
+  Complete-Step
+}
+
 function Read-Enterprise {
   $slug = $script:EnterpriseSlug
   $foundNames = @()
   Set-Context 'enterprise' $slug
   Write-Line ''
   Write-Line ('Enterprise ' + $slug)
+  if (Test-Wants 'usage-report') { Request-UsageReports ('/enterprises/' + $slug + '/settings/billing/reports') }
   if (Test-Wants 'organizations') {
     Start-Step 'Organizations'
     $null = Invoke-Fetch 'organizations' 'graphql' $script:OrganizationsFilter @('--paginate', '-f',
@@ -1302,6 +1607,10 @@ function Read-Enterprise {
   Read-Metrics ('/enterprises/' + $slug + '/copilot/metrics/reports') 'enterprise'
   if (Test-Wants 'audit-log') { Read-AuditLog ('/enterprises/' + $slug + '/audit-log') }
   if (Test-Wants 'teams') { Read-Teams ('/enterprises/' + $slug + '/teams') 'memberships' 'Enterprise teams' }
+  if (Test-Wants 'usage-report') {
+    Set-Context 'enterprise' $slug
+    Read-UsageReports ('/enterprises/' + $slug + '/settings/billing/reports')
+  }
 
   # Seat totals, policies and teams of each organization. Without -Org, every organization found above.
   $detailNames = @($script:OrganizationNames)
@@ -1470,7 +1779,7 @@ function Get-NeededScopes {
       $list.Add('read:enterprise')
     }
     if (Test-Wants 'seats') { $list.Add('manage_billing:copilot') }
-    if (Test-WantsAny @('budgets', 'cost-centers', 'ai-credit-usage', 'usage-summary', 'billing-usage')) {
+    if (Test-WantsAny @('usage-report', 'budgets', 'cost-centers', 'ai-credit-usage', 'usage-summary', 'billing-usage')) {
       $list.Add('manage_billing:enterprise')
     }
     if (Test-WantsAny @('seat-summary', 'teams')) { $list.Add('read:org') }
@@ -1579,6 +1888,12 @@ function Select-Target {
 }
 
 function Read-RunOptions {
+  if ($script:EnterpriseSlug -and $script:OnlySources.Count -eq 0 -and -not $script:SkipSources.Contains('usage-report')) {
+    Write-Line ''
+    Write-Line 'This script can get the AI usage report too. Then this one file is all you need in the app.'
+    Write-Line 'If there is no recent report, GitHub makes one, as the billing page does. This takes a few minutes.' 'DarkGray'
+    if (-not (Read-YesNo 'Get the AI usage report?' $true)) { $script:SkipSources.Add('usage-report') }
+  }
   if ($script:MonthCount -eq 0) {
     while ($true) {
       $answer = Read-Answer ('How many months of billing data and changes, from 1 to ' + $script:MaxMonths + '? [3]:') '3'
@@ -1679,7 +1994,8 @@ function Initialize-Output {
 function Confirm-Plan {
   $shown = New-Object 'System.Collections.Generic.List[string]'
   foreach ($name in $script:SelectedSources) {
-    if (-not $script:EnterpriseSlug -and ($name -eq 'organizations' -or $name -eq 'cost-centers')) { continue }
+    if (-not $script:EnterpriseSlug -and ($name -eq 'organizations' -or $name -eq 'cost-centers' -or
+        $name -eq 'usage-report')) { continue }
     $shown.Add($name)
   }
   Write-Line ''
@@ -1691,6 +2007,9 @@ function Confirm-Plan {
   }
   Write-Line ('  Months:   ' + $script:MonthKeys[0] + ' to ' + $script:MonthKeys[$script:MonthKeys.Count - 1])
   Write-Line ('  Sources:  ' + ($shown -join ' '))
+  if ($script:EnterpriseSlug -and (Test-Wants 'usage-report')) {
+    Write-Line '  Report:   the AI usage report of each month. GitHub makes it if there is no recent one.'
+  }
   Write-Line ('  File:     ' + $script:OutputPath)
   if (-not (Read-YesNo 'Start?' $true)) {
     Write-Line 'Stopped. Nothing was saved.'
@@ -1834,8 +2153,18 @@ function Show-Summary {
   Write-Line 'Next steps:'
   Write-Line '  1. Open GitHub Copilot Usage Lens: https://amgdy.github.io/github-copilot-usage-lens/'
   Write-Line '     or run npm run dev in the repository folder.'
-  Write-Line '  2. Load your AI usage report, the CSV file from GitHub billing.'
-  Write-Line '  3. Drop this file on the page. It is read in your browser and never uploaded.'
+  if ($script:UsageReportRecords -gt 0 -and $script:UsageReportMonths -lt $script:MonthCount) {
+    Write-Line ('  2. Drop this file on the page. It has the AI usage report of ' + $script:UsageReportMonths + ' of ' +
+      $script:MonthCount + ' months.')
+    Write-Line '     For the other months, run this script again in a few minutes.'
+    Write-Line '     It is read in your browser and never uploaded.'
+  } elseif ($script:UsageReportRecords -gt 0) {
+    Write-Line '  2. Drop this file on the page. It has your AI usage report too, so you need no other file.'
+    Write-Line '     It is read in your browser and never uploaded.'
+  } else {
+    Write-Line '  2. Load your AI usage report, the CSV file from GitHub billing.'
+    Write-Line '  3. Drop this file on the page. It is read in your browser and never uploaded.'
+  }
   Write-Line 'The file holds GitHub logins and activity. Keep it safe and delete it when you are done.' 'DarkGray'
 }
 
@@ -1873,7 +2202,7 @@ function Invoke-Main {
 
   Write-Text 'GitHub Copilot Usage Lens: data collector'
   Write-Line (' ' + $script:CollectorVersion) 'DarkGray'
-  Write-Line 'It only reads. It changes nothing on GitHub, and the file stays on this computer.' 'DarkGray'
+  Write-Line 'It changes no settings on GitHub, and the file stays on this computer.' 'DarkGray'
   Test-GitHubCli
   Test-Login
   $shownLogin = $script:Login

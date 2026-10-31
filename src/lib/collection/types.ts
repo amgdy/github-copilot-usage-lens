@@ -77,6 +77,20 @@ export interface BudgetUserState {
   limit: number;
 }
 
+/** A cost center at GitHub and what is assigned to it. */
+export interface CostCenter {
+  id: string;
+  name: string;
+  /** Users assigned to the cost center by login. */
+  users: string[];
+  organizations: string[];
+  /** Enterprise teams, by the name GitHub gave. */
+  teams: string[];
+  repositories: string[];
+  /** The cost center may use only its own share of the included credits (included usage controls). */
+  poolCapped: boolean;
+}
+
 /** Billing amounts of one month (USD). */
 export interface BillingAmounts {
   gross: number;
@@ -145,6 +159,16 @@ export interface AuditEvent {
   org?: string;
 }
 
+/** One CSV file of the AI usage report that the collector script saved, put back together. */
+export interface UsageReportFile {
+  month: string;
+  /** A name for the list of loaded files, such as ai-usage-report-2026-10.csv. */
+  name: string;
+  data: Blob;
+  /** Lines of the file, the line with the column names included. */
+  lines: number;
+}
+
 /** Everything the app keeps from a file of the collector scripts. It stays in memory only. */
 export interface Collection {
   fileName: string;
@@ -170,7 +194,8 @@ export interface Collection {
   userTeams: Record<string, string[]>;
   budgets: GitHubBudget[];
   budgetUsers: BudgetUserState[];
-  costCenters: number;
+  /** Active cost centers. Deleted ones are left out. */
+  costCenters: CostCenter[];
   /** The AI credit usage report of GitHub billing, added up by month and target. */
   aiCredits: BillingMonth[];
   /** The AI credit lines of the billing usage summary, used when the AI credit report is missing. */
@@ -179,6 +204,11 @@ export interface Collection {
   seatCharges: BillingMonth[];
   metrics: MetricsSummary | null;
   audit: AuditEvent[];
+  /**
+   * The AI usage report files of the months the script saved in full, oldest month first. A month with a missing or
+   * damaged part is left out, so the app never shows a month with only some of its usage.
+   */
+  usageReports: UsageReportFile[];
   /** True when one of the lists above reached its size limit. */
   capped: boolean;
 }

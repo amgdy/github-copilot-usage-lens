@@ -89,6 +89,11 @@ interface AppState {
   dataset: Dataset | null;
   setDataset: (dataset: Dataset | null) => void;
   /**
+   * Closes everything loaded in this tab (the usage report or the sample, and the GitHub data file) with its filters,
+   * errors and open panels, so the start page shows. Saved settings stay.
+   */
+  closeData: () => void;
+  /**
    * The GitHub data file of the collector scripts (budgets, seats, billing). Kept in memory only, and kept when another
    * usage report is loaded. Never used with the sample report.
    */
@@ -136,11 +141,27 @@ interface AppState {
   setFilterDrawerOpen: (open: boolean) => void;
   navOpen: boolean;
   setNavOpen: (open: boolean) => void;
+  /** The "Start fresh" question is open. One dialog in the app shell serves every button that asks it. */
+  startFreshOpen: boolean;
+  setStartFreshOpen: (open: boolean) => void;
 }
 
 export const useApp = create<AppState>((set, get) => ({
   dataset: null,
   setDataset: (dataset) => set({ dataset, pickingData: false, filters: emptyFilters(), selectedUser: null, error: null }),
+  closeData: () =>
+    set({
+      dataset: null,
+      collection: null,
+      pickingData: false,
+      loading: null,
+      error: null,
+      filters: emptyFilters(),
+      selectedUser: null,
+      filterDrawerOpen: false,
+      navOpen: false,
+      startFreshOpen: false,
+    }),
   collection: null,
   setCollection: (collection) => set({ collection }),
   pickingData: false,
@@ -215,4 +236,6 @@ export const useApp = create<AppState>((set, get) => ({
   setFilterDrawerOpen: (filterDrawerOpen) => set({ filterDrawerOpen }),
   navOpen: false,
   setNavOpen: (navOpen) => set({ navOpen }),
+  startFreshOpen: false,
+  setStartFreshOpen: (startFreshOpen) => set({ startFreshOpen }),
 }));

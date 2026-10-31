@@ -80,9 +80,102 @@ const arabic: Dict = {
   Limit: 'الحد',
   Level: 'المستوى',
   'Users and their budgets': 'المستخدمون وميزانياتهم',
-  'Users with a budget of their own or a limit for each user. When a user reaches the limit, GitHub stops their AI credits until the next month.':
-    'المستخدمون الذين لهم ميزانية خاصة أو حد لكل مستخدم. عندما يبلغ المستخدم الحد، يوقف GitHub أرصدة الذكاء الاصطناعي له حتى الشهر القادم.',
+  'Each user is held to one limit: a budget of their own, the limit of their cost center, or the limit for each user, in that order. When a user reaches the limit, GitHub stops their AI credits until the next month.':
+    'يخضع كل مستخدم لحد واحد: ميزانيته الخاصة، أو حد مركز التكلفة الخاص به، أو الحد لكل مستخدم، بهذا الترتيب. عندما يبلغ المستخدم الحد، يوقف GitHub أرصدة الذكاء الاصطناعي له حتى الشهر القادم.',
   'Show users at {share} or more': 'اعرض المستخدمين عند {share} أو أكثر',
+  'Limit type': 'نوع الحد',
+
+  // Kinds of user limits
+  'Own budget': 'ميزانية خاصة',
+  'Cost center limit': 'حد مركز التكلفة',
+  'Limit for each user': 'الحد لكل مستخدم',
+  'No limit': 'بلا حد',
+
+  // Limit map
+  Limits: 'الحدود',
+  'Where each limit sits, from the whole enterprise down to each user.': 'أين يقع كل حد، من المؤسسة الكبرى كلها حتى كل مستخدم.',
+  'Limit map': 'خريطة الحدود',
+  'Each limit is a glass that fills as AI credits are used. GitHub checks them from the bottom up. Select anything to see the limits that hold it.':
+    'كل حد كأس تمتلئ كلما استُخدمت أرصدة الذكاء الاصطناعي. ويفحصها GitHub من الأسفل إلى الأعلى. اختر أي شيء لترى الحدود التي يخضع لها.',
+  'Spending limit of the enterprise': 'حد الإنفاق للمؤسسة الكبرى',
+  'Spending limit of the organization': 'حد الإنفاق للمؤسسة',
+  'Spending limit of the cost center': 'حد الإنفاق لمركز التكلفة',
+  'Spending limits of cost centers, organizations and repositories': 'حدود الإنفاق لمراكز التكلفة والمؤسسات والمستودعات',
+  'Included credits pay first. The spending limits above count only the amount billed.': 'تدفع الأرصدة المشمولة أولًا. ولا تحسب حدود الإنفاق في الأعلى إلا المبلغ المدفوع إضافيًا.',
+  'Limit of each user': 'حد كل مستخدم',
+  'No users with usage this month or listed by GitHub.': 'لا يوجد مستخدمون لهم استخدام هذا الشهر أو أدرجهم GitHub.',
+  'All other users': 'كل المستخدمين الآخرين',
+  'Users with no limit': 'مستخدمون بلا حد',
+  'Users of {group}': 'مستخدمو {group}',
+  '{amount} each': '{amount} لكل مستخدم',
+  'No spending limit at the top.': 'لا يوجد حد إنفاق في الأعلى.',
+  'Enterprise account': 'حساب Enterprise',
+  'The limit of the user: their own budget, else their cost center limit, else the limit for each user.': 'حد المستخدم: ميزانيته الخاصة، وإلا حد مركز التكلفة الخاص به، وإلا الحد لكل مستخدم.',
+  'Included credits pay for the usage while they last.': 'تدفع الأرصدة المشمولة ثمن الاستخدام ما دامت متاحة.',
+  'The spending limit of the cost center or organization, for the amount billed.': 'حد الإنفاق لمركز التكلفة أو المؤسسة، للمبلغ المدفوع إضافيًا.',
+  'The spending limit of the enterprise, for the amount billed.': 'حد الإنفاق للمؤسسة الكبرى، للمبلغ المدفوع إضافيًا.',
+  'Spending limit': 'حد الإنفاق',
+  'Spending limit, all of GitHub Copilot': 'حد الإنفاق، GitHub Copilot كله',
+  'Amount used not known': 'المبلغ المستخدَم غير معروف',
+  '{share} used': 'استُخدم {share}',
+  '{n} users, {usedUp} used up': plural(
+    'مستخدم واحد، استنفد {usedUp} منهم الحد',
+    'مستخدمان، استنفد {usedUp} منهما الحد',
+    '{n} مستخدمين، استنفد {usedUp} منهم الحد',
+    '{n} مستخدمًا، استنفد {usedUp} منهم الحد',
+    '{n} مستخدم، استنفد {usedUp} منهم الحد',
+  ),
+  'This cost center may use only the included credits of its own members.': 'يستخدم مركز التكلفة هذا الأرصدة المشمولة لأعضائه فقط.',
+  'Own credit share': 'حصة أرصدة خاصة',
+  'No spending limit at the top. Nothing caps the amount billed for all users.': 'لا يوجد حد إنفاق في الأعلى. لا شيء يحدّ المبلغ المدفوع إضافيًا لكل المستخدمين.',
+  'No limits for cost centers, organizations or repositories.': 'لا توجد حدود لمراكز التكلفة أو المؤسسات أو المستودعات.',
+  'Show fewer': 'اعرض أقل',
+  '{n} cost centers have no limit of their own.': plural(
+    'مركز تكلفة واحد ليس له حد خاص.',
+    'مركزا تكلفة ليس لهما حد خاص.',
+    '{n} مراكز تكلفة ليس لها حد خاص.',
+    '{n} مركز تكلفة ليس لها حد خاص.',
+    '{n} مركز تكلفة ليس لها حد خاص.',
+  ),
+  'Users with a budget of their own': 'مستخدمون لهم ميزانية خاصة',
+  'Order GitHub checks': 'الترتيب الذي يتحقق به GitHub',
+  'Users by the limit that holds them': 'المستخدمون حسب الحد الذي يخضعون له',
+  'Out of {n} users with usage this month or listed by GitHub.': plural(
+    'من أصل مستخدم واحد له استخدام هذا الشهر أو أدرجه GitHub.',
+    'من أصل مستخدمَين لهما استخدام هذا الشهر أو أدرجهما GitHub.',
+    'من أصل {n} مستخدمين لهم استخدام هذا الشهر أو أدرجهم GitHub.',
+    'من أصل {n} مستخدمًا لهم استخدام هذا الشهر أو أدرجهم GitHub.',
+    'من أصل {n} مستخدم لهم استخدام هذا الشهر أو أدرجهم GitHub.',
+  ),
+
+  // AI credit limit of a user, in the user details
+  'AI credit limit': 'حد أرصدة الذكاء الاصطناعي',
+  'In {month}, GitHub holds this user to this limit, the most specific one that applies. When usage reaches it, GitHub stops their AI credits until the next month. The filters do not change it.':
+    'في {month}، يُخضع GitHub هذا المستخدم لهذا الحد، وهو أدق حد ينطبق عليه. عندما يبلغه الاستخدام، يوقف GitHub أرصدة الذكاء الاصطناعي له حتى الشهر القادم. لا تغيّره عوامل التصفية.',
+  'GitHub has no limit for users that applies to this user. Only a spending limit on the amount billed can stop their AI credits.':
+    'لا يوجد في GitHub حد للمستخدمين ينطبق على هذا المستخدم. لا يوقف أرصدة الذكاء الاصطناعي له إلا حد إنفاق على المبلغ المدفوع إضافيًا.',
+  'Shown by GitHub': 'كما أظهره GitHub',
+  '{name}, as GitHub listed it': '{name}، كما أدرجه GitHub',
+  '{name}, assigned to the user': '{name}، مسند إلى المستخدم',
+  '{name}, through the team {team}': '{name}، عبر الفريق {team}',
+  '{name}, through the organization {organization}': '{name}، عبر المؤسسة {organization}',
+  '{name}, from the usage report': '{name}، من تقرير الاستخدام',
+  'Reaches the limit {date}': 'يبلغ الحد في {date}',
+  'Limit {amount}': 'الحد {amount}',
+  'Already reached': 'بلغه بالفعل',
+  'Amount used as GitHub showed it on {day}. It counts all usage, included credits too.': 'المبلغ المستخدَم كما أظهره GitHub في {day}. يشمل كل الاستخدام، والأرصدة المشمولة أيضًا.',
+  'GitHub did not list this user, so the amount used is the usage in the report this month, included credits too.':
+    'لم يُدرج GitHub هذا المستخدم، لذلك المبلغ المستخدَم هو استخدامه في التقرير هذا الشهر، والأرصدة المشمولة أيضًا.',
+  'The report has no usage for this month, and GitHub did not list this user.': 'ليس في التقرير استخدام لهذا الشهر، ولم يُدرج GitHub هذا المستخدم.',
+  'of {limit}': 'من {limit}',
+  'Share of the limit used': 'الحصة المستخدمة من الحد',
+  'Set by': 'مصدره',
+  Ends: 'ينتهي',
+  'Left this month': 'المتبقي هذا الشهر',
+  'Reaches the limit': 'يبلغ الحد',
+  Replaces: 'يحل محل',
+  '{kind}: {amount}': '{kind}: {amount}',
+  'Usage of {name} against the limit': 'استخدام {name} مقارنة بالحد',
 
   // Billed usage with no budget
   Type: 'النوع',
@@ -116,6 +209,62 @@ const arabic: Dict = {
     'استنفد {n} مستخدم ميزانياتهم.',
   ),
   'Open the Budgets page': 'افتح صفحة الميزانيات',
+
+  // Limit map: finding a user, playing the month and the side panel
+  'Find a user': 'ابحث عن مستخدم',
+  'No user found.': 'لم يُعثر على مستخدم.',
+  'Play the month': 'شغّل الشهر',
+  Pause: 'إيقاف مؤقت',
+  Now: 'الآن',
+  'Shown: usage up to the end of {day}, from the usage report. {month} has {days} days.': 'المعروض: الاستخدام حتى نهاية {day}، من تقرير الاستخدام. في {month} {days} يومًا.',
+  'Back to the whole picture': 'العودة إلى الصورة كاملة',
+  'Credit left': 'الرصيد المتبقي',
+  'No users here.': 'لا يوجد مستخدمون هنا.',
+  'Closest to their limit': 'الأقرب إلى حدهم',
+  '{n} more': 'و{n} آخرون',
+  'Show its usage': 'اعرض استخدامه',
+  'Show its users': 'اعرض مستخدميه',
+  'Show its spending limit': 'اعرض حد إنفاقه',
+  'Users with a budget of their own. Their own budget is the only limit that holds them.':
+    'مستخدمون لهم ميزانية خاصة. ميزانيتهم الخاصة هي الحد الوحيد الذي يخضعون له.',
+  'Users of this cost center. Its limit for each user holds them, unless they have a budget of their own.':
+    'مستخدمو مركز التكلفة هذا. يخضعون لحده لكل مستخدم، إلا إذا كانت لهم ميزانية خاصة.',
+  'Users without a budget of their own and outside the cost centers with a limit. The limit for each user holds them.':
+    'مستخدمون ليس لهم ميزانية خاصة وليسوا في مراكز تكلفة لها حد. ويخضعون للحد لكل مستخدم.',
+  'Users without a budget of their own and outside the cost centers with a limit. No limit holds them.':
+    'مستخدمون ليس لهم ميزانية خاصة وليسوا في مراكز تكلفة لها حد. ولا يخضعون لأي حد.',
+  'No limit for each user': 'لا يوجد حد لكل مستخدم',
+  'Amount used as GitHub showed it.': 'المبلغ المستخدَم كما أظهره GitHub.',
+  'Amount used from the usage report, included credits too.': 'المبلغ المستخدَم من تقرير الاستخدام، مع الأرصدة المشمولة.',
+  '{share} of {amount}': '{share} من {amount}',
+  '{used} of {limit}': '{used} من {limit}',
+  '{used}, no limit': '{used}، بلا حد',
+  'GitHub checks these limits for each request, from the first step up. Any one can stop the usage.':
+    'يفحص GitHub هذه الحدود لكل طلب، من الخطوة الأولى صعودًا. وأي منها قد يوقف الاستخدام.',
+  'The limit of the user': 'حد المستخدم',
+  'Used up. GitHub stops the usage of this user.': 'نفد. يوقف GitHub استخدام هذا المستخدم.',
+  'No limit holds this user. Only the spending limits above can stop them.': 'لا يخضع هذا المستخدم لأي حد. ولا توقفه إلا حدود الإنفاق في الأعلى.',
+  'Included credits pay for the usage while they last. Only the rest is billed and counts against the spending limits.':
+    'تدفع الأرصدة المشمولة ثمن الاستخدام ما دامت متاحة. ولا يُفوتر إلا الباقي، وهو ما يُحسب من حدود الإنفاق.',
+  'Spending limits that count their usage': 'حدود الإنفاق التي تحسب استخدامهم',
+  'No cost center, organization or repository limit counts their usage.': 'لا يحسب استخدامهم أي حد لمركز تكلفة أو مؤسسة أو مستودع.',
+  'It counts the amount billed for every user. When it stops usage, it stops everyone.': 'يحسب المبلغ المدفوع إضافيًا لكل مستخدم. وعندما يوقف الاستخدام، يوقفه للجميع.',
+  'It counts the amount billed for the usage of these users. When it stops usage, it stops them all, whatever their own limit.':
+    'يحسب المبلغ المدفوع إضافيًا لاستخدام هؤلاء المستخدمين. وعندما يوقف الاستخدام، يوقفهم جميعًا مهما كان حد كل منهم.',
+  'Users it counts': 'المستخدمون الذين يحسبهم',
+  'Select a glass, a group or a user to see every limit that holds it. Each one gets the number of its step.': 'اختر كأسًا أو مجموعة أو مستخدمًا لترى كل حد يخضع له. ويأخذ كل حد رقم خطوته.',
+  'Users without a budget of their own or a cost center limit can use AI credits without a cap. Only the spending limits above stop them.':
+    'يمكن للمستخدمين الذين ليس لهم ميزانية خاصة أو حد مركز تكلفة استخدام أرصدة الذكاء الاصطناعي بلا سقف. ولا توقفهم إلا حدود الإنفاق في الأعلى.',
+  'Colors of the user glasses': 'ألوان كؤوس المستخدمين',
+  'Select a color to fade the other users.': 'اختر لونًا لتخفيت المستخدمين الآخرين.',
+  'The large glasses show the spending limits as GitHub showed them when the data was collected.': 'تعرض الكؤوس الكبيرة حدود الإنفاق كما أظهرها GitHub عند جمع البيانات.',
+  'The map shows {n} users: users with usage this month or listed by GitHub.': plural(
+    'تعرض الخريطة مستخدمًا واحدًا: له استخدام هذا الشهر أو أدرجه GitHub.',
+    'تعرض الخريطة مستخدمَين: لهما استخدام هذا الشهر أو أدرجهما GitHub.',
+    'تعرض الخريطة {n} مستخدمين: لهم استخدام هذا الشهر أو أدرجهم GitHub.',
+    'تعرض الخريطة {n} مستخدمًا: لهم استخدام هذا الشهر أو أدرجهم GitHub.',
+    'تعرض الخريطة {n} مستخدم: لهم استخدام هذا الشهر أو أدرجهم GitHub.',
+  ),
 };
 
 export default arabic;

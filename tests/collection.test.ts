@@ -15,7 +15,7 @@ import {
   usersAtLimit,
 } from '../src/lib/collection';
 import { buildStore } from '../src/lib/csv/ingest';
-import { END, budgetRecord, creditLine, header, recordLine, readLines, seatRecord, sourceLine, textOf, type Line } from './collectionLines';
+import { END, budgetRecord, creditLine, header, recordLine, readLines, seatRecord, sourceLine, storedText, textOf, usageReportPart, type Line } from './collectionLines';
 import { makeCsv, type RowSpec } from './helpers';
 
 function storeOf(rows: RowSpec[]) {
@@ -45,12 +45,25 @@ describe('reading a GitHub data file', () => {
       recordLine('member', { login: 'KofiIto_nwind', type: 'User' }),
       recordLine('member', { login: 'NoSeat_nwind', type: 'User' }),
       recordLine('team', { slug: 'ent:platform', name: 'Platform' }),
+      recordLine('team', { slug: '__proto__', name: 'Reserved slug' }),
       recordLine('team-member', { login: 'MeiChen_nwind' }, { parent: 'ent:platform' }),
       recordLine('user-teams', { user_login: 'MeiChen_nwind', day: '2026-10-01', team_id: 1, slug: 'devs' }),
       recordLine('budget', budgetRecord('budget-1', {})),
       recordLine('budget-user', { user: 'KofiIto_nwind', consumed_amount: 21, target_amount: 20, override_budget_id: null }, { parent: 'budget-1' }),
       recordLine('budget-user', { user: 'MeiChen_nwind', consumed_amount: 50, target_amount: 20, override_budget_id: 'budget-9' }, { parent: 'budget-1' }),
-      recordLine('cost-center', { id: 'cc-1', name: 'Platform', state: 'active', resources: [] }),
+      recordLine('cost-center', {
+        id: 'cc-1',
+        name: 'Platform',
+        state: 'active',
+        ai_credit_pool_enabled: true,
+        resources: [
+          { type: 'User', name: 'KofiIto_nwind' },
+          { type: 'Org', name: 'octo-org' },
+          { type: 'Repo', name: 'octo-org/app' },
+          { type: 'EnterpriseTeam', name: 'platform' },
+        ],
+      }),
+      recordLine('cost-center', { id: 'cc-2', name: 'Old', state: 'deleted', resources: [] }),
       creditLine('2026-08', 120, 90, 30),
       creditLine('2026-08', 10, 10, 0),
       recordLine('usage-summary', { product: 'Copilot', sku: 'Copilot Business', unitType: 'UserMonths', pricePerUnit: 19, grossQuantity: 2, grossAmount: 38, discountAmount: 0, netAmount: 38 }, { month: '2026-08' }),
@@ -75,14 +88,18 @@ describe('reading a GitHub data file', () => {
       { org: 'octo-org', total: 3, addedThisCycle: 1, pendingCancellation: 1, pendingInvitation: 0, activeThisCycle: 2, inactiveThisCycle: 1, management: 'assign_all', plan: 'business', ideChat: 'enabled', platformChat: 'disabled', cli: 'enabled' },
     ]);
     expect(collection.members).toEqual(['kofiito_nwind', 'noseat_nwind']);
-    expect(collection.teams).toEqual({ 'ent:platform': 'Platform' });
+    expect(collection.teams).toEqual(Object.fromEntries([['ent:platform', 'Platform'], ['__proto__', 'Reserved slug']]));
+    expect(Object.hasOwn(collection.teams, '__proto__')).toBe(true);
     expect(collection.userTeams).toEqual({ meichen_nwind: ['ent:platform', 'devs'] });
     expect(collection.budgets).toEqual([
       { id: 'budget-1', scope: 'enterprise', entity: 'octocorp', amount: 500, consumed: 100, stopsUsage: true, willAlert: true, type: 'SkuPricing', sku: 'ai_credits', aiCredits: true, copilot: true },
     ]);
     // A user held to a budget of their own is left out of the shared budget.
     expect(collection.budgetUsers).toEqual([{ budgetId: 'budget-1', login: 'KofiIto_nwind', consumed: 21, limit: 20 }]);
-    expect(collection.costCenters).toBe(1);
+    // Deleted cost centers are left out.
+    expect(collection.costCenters).toEqual([
+      { id: 'cc-1', name: 'Platform', users: ['KofiIto_nwind'], organizations: ['octo-org'], teams: ['platform'], repositories: ['octo-org/app'], poolCapped: true },
+    ]);
     expect(collection.aiCredits).toEqual([{ month: '2026-08', target: 'octocorp', gross: 130, discount: 100, net: 30, quantity: 13000 }]);
     expect(collection.seatCharges).toEqual([{ month: '2026-08', target: 'octocorp', gross: 38, discount: 0, net: 38, quantity: 2 }]);
     expect(collection.summaryCredits).toEqual([{ month: '2026-08', target: 'octocorp', gross: 130, discount: 100, net: 30, quantity: 13000 }]);
@@ -199,6 +216,53 @@ describe('reading a GitHub data file', () => {
     expect(collection.complete).toBe(true);
   });
 
+  it('puts the AI usage report back together from its parts', async () => {
+    const csv = makeCsv([
+      { date: '2026-09-02', user: 'KofiIto_nwind', gross: 1.5, costCenter: 'Team "North", \\ desk' },
+      { date: '2026-09-03', user: 'MeiChen_nwind', gross: 0.25 },
+      { date: '2026-09-04', user: 'SaraLind_nwind', gross: 2 },
+    ]);
+    const lines = csv.trimEnd().split('\n');
+    const collection = readLines([
+      header(),
+      // The parts may come in any order. The second file holds only the column names.
+      usageReportPart('2026-09', 1, 2, lines.slice(2)),
+      usageReportPart('2026-09', 1, 1, lines.slice(0, 2)),
+      usageReportPart('2026-09', 2, 1, lines.slice(0, 1)),
+      sourceLine('usage-report', 'ok', { month: '2026-09', records: 3 }),
+      END,
+    ]);
+    expect(collection.usageReports.map((report) => [report.month, report.name, report.lines])).toEqual([
+      ['2026-09', 'ai-usage-report-2026-09-1.csv', 4],
+      ['2026-09', 'ai-usage-report-2026-09-2.csv', 1],
+    ]);
+    expect(await storedText(collection.usageReports[0].data)).toBe(csv);
+    const store = await buildStore(collection.usageReports.map((report) => ({ name: report.name, data: report.data })));
+    expect(store.n).toBe(3);
+  });
+
+  it('leaves out a month of the AI usage report that is not complete', () => {
+    const lines = makeCsv([{ date: '2026-09-02', user: 'KofiIto_nwind', gross: 1 }, { date: '2026-09-03', user: 'MeiChen_nwind', gross: 1 }]).trimEnd().split('\n');
+    const month = (name: string, parts: Line[], source: Line | null) => {
+      const collection = readLines([header(), ...parts, ...(source ? [source] : []), END]);
+      return [name, collection.usageReports.length];
+    };
+    const ok = (records = 2) => sourceLine('usage-report', 'ok', { month: '2026-09', records });
+    expect([
+      month('complete', [usageReportPart('2026-09', 1, 1, lines)], ok()),
+      month('no source line', [usageReportPart('2026-09', 1, 1, lines)], null),
+      month('failed', [usageReportPart('2026-09', 1, 1, lines)], sourceLine('usage-report', 'failed', { month: '2026-09', records: 0 })),
+      month('a part is missing', [usageReportPart('2026-09', 1, 2, lines.slice(1))], ok(1)),
+      month('a part came twice', [usageReportPart('2026-09', 1, 1, lines), usageReportPart('2026-09', 1, 1, lines)], ok()),
+      month('rows do not add up', [usageReportPart('2026-09', 1, 1, lines)], ok(3)),
+      month('two reports', [usageReportPart('2026-09', 1, 1, lines), usageReportPart('2026-09', 2, 1, lines.slice(0, 1), 'report-2')], ok()),
+      month('damaged lines', [usageReportPart('2026-09', 1, 1, lines), recordLine('usage-report', { report: 'report-1', file: 1, part: 2, lines: [1, 2] }, { month: '2026-09' })], ok()),
+    ]).toEqual([
+      ['complete', 1], ['no source line', 0], ['failed', 0], ['a part is missing', 0], ['a part came twice', 0],
+      ['rows do not add up', 0], ['two reports', 0], ['damaged lines', 0],
+    ]);
+  });
+
   it('reads the start of a gzip file for sorting uploads', async () => {
     const text = textOf([header(), END]);
     expect(await readHeadText(new Blob([gzipSync(text)]), 40)).toBe(text.slice(0, 40));
@@ -307,6 +371,21 @@ describe('what a GitHub data file adds', () => {
     const { months, checkedOrgs } = checkMonths(collection, store);
     expect(checkedOrgs).toEqual(['octo-org']);
     expect(months[0]).toMatchObject({ status: 'match', report: { gross: 50 } });
+  });
+
+  it('does not compare an organization file with unrelated report rows', async () => {
+    const store = await storeOf([
+      { date: '2026-08-01', user: 'KofiIto_nwind', gross: 50, org: 'octo-org' },
+      { date: '2026-08-31', user: 'MeiChen_nwind', gross: 50, org: 'octo-labs' },
+    ]);
+    const collection = readLines([
+      header({ scope: 'organization', enterprise: null, organizations: ['missing-org'], months: ['2026-08'] }),
+      sourceLine('ai-credit-usage', 'ok', { month: '2026-08' }),
+      creditLine('2026-08', 100, 100, 0),
+    ]);
+    const { months, checkedOrgs } = checkMonths(collection, store);
+    expect(checkedOrgs).toEqual([]);
+    expect(months[0]).toMatchObject({ status: 'outside', report: { gross: 0 }, github: { gross: 100 } });
   });
 
   it('falls back to the billing summary and adds seat charges to the bill', () => {

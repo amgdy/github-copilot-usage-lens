@@ -14,6 +14,10 @@ export interface BuildInfo {
   version: string;
   /** The GitHub Actions run number, or undefined for a build made on a computer. */
   runNumber?: number;
+  /** The full commit, only for a build made by GitHub Actions on github.com. */
+  commit?: string;
+  /** The repository as owner/name, only for a build made by GitHub Actions on github.com. */
+  repository?: string;
   /** The first 7 characters of the commit. */
   shortCommit?: string;
   runUrl?: string;
@@ -33,11 +37,14 @@ export function describeBuild(raw: RawBuildInfo): BuildInfo {
   const runId = raw.runId && /^\d+$/.test(raw.runId) ? raw.runId : undefined;
   const runAttempt = raw.runAttempt && /^\d+$/.test(raw.runAttempt) ? raw.runAttempt : undefined;
   const commit = raw.commit && /^[0-9a-f]{7,40}$/i.test(raw.commit) ? raw.commit.toLowerCase() : undefined;
-  const repositoryUrl = raw.serverUrl === GITHUB_SERVER && raw.repository && REPOSITORY_PATTERN.test(raw.repository) ? `${GITHUB_SERVER}/${raw.repository}` : undefined;
+  const repository = raw.serverUrl === GITHUB_SERVER && raw.repository && REPOSITORY_PATTERN.test(raw.repository) ? raw.repository : undefined;
+  const repositoryUrl = repository ? `${GITHUB_SERVER}/${repository}` : undefined;
   const builtOn = raw.builtAt && /^\d{4}-\d{2}-\d{2}/.test(raw.builtAt) ? raw.builtAt.slice(0, 10) : undefined;
   return {
     version: raw.version,
     runNumber,
+    commit: repository && commit?.length === 40 ? commit : undefined,
+    repository,
     shortCommit: commit?.slice(0, 7),
     runUrl: repositoryUrl && runId ? `${repositoryUrl}/actions/runs/${runId}${runAttempt && runAttempt !== '1' ? `/attempts/${runAttempt}` : ''}` : undefined,
     commitUrl: repositoryUrl && commit ? `${repositoryUrl}/commit/${commit}` : undefined,

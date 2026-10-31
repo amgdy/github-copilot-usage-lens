@@ -15,6 +15,7 @@ import { TokensCard } from './user/TokensCard';
 import { UserBadges } from './user/UserBadges';
 import { UserFooter } from './user/UserFooter';
 import { UserKpis } from './user/UserKpis';
+import { UserLimitBlock } from './user/UserLimitBlock';
 
 /** Slide-over with everything about one user. Any page opens it with `useApp.getState().selectUser(id)`. */
 export function UserDrawer() {
@@ -57,6 +58,7 @@ function OpenDrawer({ id }: { id: number }) {
             <UserBadges p={user} />
             <UserKpis p={user} />
             {user.license ? <LicenseBlock license={user.license} /> : null}
+            <UserLimitBlock login={store.dicts.user.values[id]} name={name} />
             <DailyChart p={user} />
             <ModelMix p={user} />
             <AutoVsDirect p={user} />

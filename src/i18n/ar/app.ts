@@ -22,12 +22,38 @@ const arabic: Dict = {
     'أضف تقرير استخدام الذكاء الاصطناعي الذي نزّلته من GitHub. ستحصل على الاستخدام وحالة الرصيد المشترك، وترتيب المستخدمين، ومجموعاتهم، والرموز وخصم Auto لكل مستخدم، وخطوات واضحة للاستفادة أكثر من GitHub Copilot بتكلفة معقولة.',
   '{n} rows read': 'الصفوف المقروءة: {n}',
   'Starting…': 'جارٍ البدء…',
-  'Drop one or more CSV files here': 'أفلت ملف CSV أو أكثر هنا',
+  'Drop your files here': 'أفلت ملفاتك هنا',
+  'The AI usage report, a license list or a GitHub data file. You can choose several at once.':
+    'تقرير استخدام الذكاء الاصطناعي، أو قائمة تراخيص، أو ملف بيانات GitHub. يمكنك اختيار عدة ملفات معًا.',
+  'File types you can choose': 'أنواع الملفات التي يمكنك اختيارها',
+  'Which file do I need?': 'أي ملف أحتاج إليه؟',
+  'Show the steps': 'اعرض الخطوات',
   'Several files are joined into one, and repeated rows are removed.': 'تُدمج الملفات في ملف واحد، وتُحذف الصفوف المكررة.',
   'Choose files': 'اختيار الملفات',
-  'After loading, you can add your GitHub Copilot license list and other GitHub files on the Data page for a fuller picture.':
-    'بعد التحميل، يمكنك إضافة قائمة تراخيص GitHub Copilot وملفات أخرى من GitHub في صفحة البيانات، لتحصل على صورة أوضح.',
   'That file could not be loaded': 'تعذّر تحميل هذا الملف',
+  // Start page: which files you can use
+  'Which files you can use': 'الملفات التي يمكنك استخدامها',
+  'Start with the AI usage report. Add the others for a fuller picture. You can choose them all at once, and the app sees which file is which.':
+    'ابدأ بتقرير استخدام الذكاء الاصطناعي، وأضف الملفات الأخرى لتحصل على صورة أوضح. يمكنك اختيارها كلها معًا، ويتعرّف التطبيق على نوع كل ملف.',
+  'What it gives': 'ما الذي يقدّمه',
+  'Where to get it': 'من أين تحصل عليه',
+  'AI usage report': 'تقرير استخدام الذكاء الاصطناعي',
+  'Start here': 'ابدأ من هنا',
+  'Every number in the report: usage, cost, users, models and tokens.': 'كل أرقام التقرير: الاستخدام والتكلفة والمستخدمون والنماذج والرموز.',
+  'In GitHub, open Billing and licensing, then the AI usage page, and choose Get usage report. GitHub emails you a link to the file.':
+    'في GitHub، افتح Billing and licensing، ثم صفحة AI usage، واختر Get usage report. يرسل لك GitHub رابط الملف بالبريد الإلكتروني.',
+  Recommended: 'موصى به',
+  'Who has a seat and when they last used GitHub Copilot. It helps you review idle seats and makes the included credits estimate more exact.':
+    'من لديه ترخيص ومتى استخدم GitHub Copilot آخر مرة. يساعدك على مراجعة التراخيص الخاملة ويجعل تقدير الأرصدة المشمولة أدق.',
+  'Easiest: the GitHub Copilot activity report (CSV) from your organization or enterprise settings. Advanced: the seat list from the GitHub REST API (JSON). A plain list of usernames (TXT) also works.':
+    'الأسهل: تقرير نشاط GitHub Copilot (CSV) من إعدادات المؤسسة أو حساب Enterprise. الخيار المتقدم: قائمة التراخيص من GitHub REST API (JSON). وتصلح أيضًا قائمة بسيطة بأسماء المستخدمين (TXT).',
+  'Choose it together with the usage report, or add it later on the Licenses page.': 'اختره مع تقرير الاستخدام، أو أضفه لاحقًا في صفحة التراخيص.',
+  Optional: 'اختياري',
+  'One command reads more from GitHub: budgets and limits, every seat, the bill check, activity with code completions and seat changes. For an enterprise the file has the AI usage report too, so it is the only file you need.':
+    'أمر واحد يقرأ المزيد من GitHub: الميزانيات والحدود، وكل ترخيص، ومطابقة الفاتورة، والنشاط مع إكمال الكود، وتغييرات التراخيص. ولحساب Enterprise يحوي الملف تقرير استخدام الذكاء الاصطناعي أيضًا، فلا تحتاج إلى ملف آخر.',
+  'Run the collector script on your computer. It uses the GitHub CLI, only reads from GitHub and saves one file.':
+    'شغّل سكربت جمع البيانات على جهازك. يستخدم GitHub CLI، ويقرأ من GitHub فقط، ويحفظ ملفًا واحدًا.',
+  // Start page: what you get
   'Clear next steps': 'خطوات تالية واضحة',
   'Users are grouped by how much and how they use GitHub Copilot. Actions are sorted by the money they can save.':
     'يُقسَّم المستخدمون إلى مجموعات حسب مقدار استخدامهم لـ GitHub Copilot وطريقته. وتُرتَّب الإجراءات حسب المال الذي توفّره.',
@@ -45,6 +71,20 @@ const arabic: Dict = {
 
   // Shell and side bar
   'Load other data': 'تحميل بيانات أخرى',
+  // Start fresh
+  'Start fresh': 'ابدأ من جديد',
+  'Start fresh and delete settings': 'ابدأ من جديد واحذف الإعدادات',
+  'Close the loaded files and go back to the start page.': 'أغلق الملفات المحمّلة وارجع إلى صفحة البداية.',
+  'Close everything loaded in this tab and go back to the start page.': 'أغلق كل ما حُمّل في علامة التبويب هذه وارجع إلى صفحة البداية.',
+  'What is closed': 'ما الذي سيُغلق',
+  'The sample report': 'التقرير التجريبي',
+  'Usage report: {name}': 'تقرير الاستخدام: {name}',
+  'GitHub data file: {name}': 'ملف بيانات GitHub: {name}',
+  'Nothing is deleted at GitHub or on your computer. You can load the same files again.': 'لا يُحذف شيء على GitHub ولا على جهازك. يمكنك تحميل الملفات نفسها مرة أخرى.',
+  'Also delete the settings saved in this browser': 'احذف أيضًا الإعدادات المحفوظة في هذا المتصفح',
+  'Your license list, budget, thresholds, price changes, theme, colors and language go back to the defaults. Export a settings file first if you may want them back.':
+    'تعود قائمة التراخيص والميزانية والحدود وتعديلات الأسعار والمظهر والألوان واللغة إلى قيمها الافتراضية. صدّر ملف إعدادات أولًا إن كنت قد تحتاج إليها لاحقًا.',
+  'No settings are saved in this browser.': 'لا توجد إعدادات محفوظة في هذا المتصفح.',
   'Worked out in {ms} ms in your browser. Usage is AI credits × $0.01. Estimates are marked as estimates. Every number has a calculation button, and the Methodology page lists them all.':
     'تم الحساب في {ms} ملّي ثانية داخل متصفحك. الاستخدام = أرصدة الذكاء الاصطناعي × $0.01. التقديرات مكتوب عليها أنها تقديرات. لكل رقم زر يشرح طريقة حسابه، وصفحة المنهجية تعرضها كلها.',
   'GitHub Copilot usage': 'استخدام GitHub Copilot',
@@ -126,6 +166,8 @@ const arabic: Dict = {
 
   // Brand, contents list and sample report
   'GitHub Copilot': 'GitHub Copilot',
+  'GitHub Copilot Usage Lens: start page': 'GitHub Copilot Usage Lens: صفحة البداية',
+  'Go to the start page': 'الانتقال إلى صفحة البداية',
   '{n} urgent actions': plural('إجراء عاجل واحد', 'إجراءان عاجلان', '{n} إجراءات عاجلة', '{n} إجراءً عاجلًا', '{n} إجراء عاجل'),
   'Making a sample report…': 'جارٍ إنشاء تقرير تجريبي…',
   'Sample report (made-up data)': 'تقرير تجريبي (بيانات وهمية)',

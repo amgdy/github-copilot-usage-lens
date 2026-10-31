@@ -6,7 +6,7 @@ import type { DataStore } from '../../lib/types';
 import { fmtInt, fmtPct, fmtUSD } from '../../lib/utils/format';
 import { drill } from '../../state/router';
 import { budgetName } from '../githubText';
-import { levelLabel, levelTone, reportNames } from './levels';
+import { levelLabel, levelTone, limitKindLabel, reportNames } from './levels';
 
 /** Users held to a budget: how many are at each level, and who is closest to the limit. */
 export function BudgetUsersCard({ overview, collection, store }: { overview: BudgetOverview; collection: Collection; store: DataStore }) {
@@ -14,6 +14,7 @@ export function BudgetUsersCard({ overview, collection, store }: { overview: Bud
   const columns = useMemo<Column<BudgetUserRow>[]>(
     () => [
       { key: 'login', header: t('User'), value: (row) => row.login, render: (row) => <span className="font-medium">{row.login}</span> },
+      { key: 'kind', header: t('Limit type'), value: (row) => limitKindLabel(row.kind) },
       { key: 'budget', header: t('Budget'), value: (row) => budgetNames.get(row.budgetId) ?? '–' },
       { key: 'used', header: t('Used'), align: 'end', value: (row) => row.consumed, render: (row) => fmtUSD(row.consumed) },
       { key: 'limit', header: t('Limit'), align: 'end', value: (row) => row.limit, render: (row) => fmtUSD(row.limit) },
@@ -32,14 +33,20 @@ export function BudgetUsersCard({ overview, collection, store }: { overview: Bud
     ],
     [budgetNames],
   );
-  const closeToLimit = overview.users.filter((row) => row.level === 'near' || row.level === 'used-up').map((row) => row.login);
-  const inReport = reportNames(closeToLimit, store.dicts.user.values);
+  const inReport = useMemo(
+    () =>
+      reportNames(
+        overview.users.filter((row) => row.level === 'near' || row.level === 'used-up').map((row) => row.login),
+        store.dicts.user.values,
+      ),
+    [overview, store],
+  );
 
   return (
     <Card
       title={t('Users and their budgets')}
       calc="budget-users"
-      subtitle={t('Users with a budget of their own or a limit for each user. When a user reaches the limit, GitHub stops their AI credits until the next month.')}
+      subtitle={t('Each user is held to one limit: a budget of their own, the limit of their cost center, or the limit for each user, in that order. When a user reaches the limit, GitHub stops their AI credits until the next month.')}
       actions={
         inReport.length > 0 ? (
           <button type="button" className="btn btn-sm" onClick={() => drill({ users: inReport }, { page: 'users' })}>

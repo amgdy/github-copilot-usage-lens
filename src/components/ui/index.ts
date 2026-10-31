@@ -7,6 +7,7 @@ export { Callout, EmptyState, PageHeader, PendingBar, Section, Spinner, TONE_CLA
 export { Field, NumberField, Popover, SearchInput, Segmented, Select, Slider, Toggle, type NumberFieldProps, type SegmentedOption } from './Controls';
 export { DataTable, type Column, type DataTableProps } from './DataTable';
 export { DocLinks, type DocLinksProps } from './DocLinks';
+export { Dialog, type DialogProps } from './Dialog';
 export { Drawer, type DrawerProps } from './Drawer';
 export { Kpi, KpiGrid, type KpiDelta, type KpiProps } from './Kpi';
 export { MultiSelect, type MultiOption } from './MultiSelect';

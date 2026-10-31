@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { Kpi, KpiGrid } from '../../components/ui';
 import { t, tp } from '../../i18n';
 import { NEAR_SHARE, type BudgetOverview, type GitHubData } from '../../lib/collection';
@@ -8,9 +9,9 @@ import { reportNames } from './levels';
 
 /** The headline counts of the Budgets page. */
 export function BudgetKpis({ overview, github, store }: { overview: BudgetOverview; github: GitHubData; store: DataStore }) {
-  const stopped = github.usersAtLimit.map((user) => user.login);
-  const stoppedInReport = reportNames(stopped, store.dicts.user.values);
-  const nearUsers = overview.users.filter((user) => user.level === 'near').length;
+  const stopped = useMemo(() => github.usersAtLimit.map((user) => user.login), [github]);
+  const stoppedInReport = useMemo(() => reportNames(stopped, store.dicts.user.values), [stopped, store]);
+  const nearUsers = overview.userLevels.near;
   const runOut = overview.projectedOut.length;
   const measured = overview.budgets.filter((row) => row.share !== null).length;
   return (

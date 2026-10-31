@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { StartFreshButton } from '../components/StartFreshButton';
 import { CalcInfo, PageHeader } from '../components/ui';
 import { t, tp } from '../i18n';
 import { fmtInt } from '../lib/utils/format';
@@ -40,6 +41,7 @@ export default function DataPage() {
         }
         actions={
           <>
+            <StartFreshButton />
             <LoadButton />
             <DownloadButton store={store} rows={scope} label={t('Download filtered rows (CSV)')} fileName={exportFileName(start, end)} primary />
           </>

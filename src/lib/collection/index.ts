@@ -2,13 +2,34 @@ export * from './types';
 export { COLLECTION_LIMITS, CollectionError, CollectionReader, auditKind } from './read';
 export { MAX_LINE_CHARS, isGzip, readCollection, readHeadText } from './file';
 export {
+  COLLECTOR_MONTHS,
+  COLLECTOR_SCRIPT_SOURCE,
+  DEFAULT_COLLECTOR_CHOICES,
+  cleanCollectorChoices,
+  collectorArguments,
+  collectorCommand,
+  collectorCopyCommand,
+  collectorNames,
+  collectorProblems,
+  collectorScriptPageUrl,
+  collectorScriptSource,
+  collectorScriptUrl,
+  collectorZipUrl,
+  type CollectorChoices,
+  type CollectorScope,
+  type CollectorScriptSource,
+  type CollectorSystem,
+} from './command';
+export {
   checkMonths,
   collectionLicenseParse,
   deriveGitHub,
+  fileCoversReport,
   githubCredits,
   monthBills,
   monthOfKey,
   pickBudget,
+  reportOrganizations,
   sourceComplete,
   usersAtLimit,
   type ActivityOverview,
@@ -29,12 +50,32 @@ export {
   budgetUsers,
   collectionMonth,
   HALF_SHARE,
+  monthBilled,
   NEAR_SHARE,
   PACE_DAYS,
+  recentRate,
+  runOut,
   type BudgetLevel,
   type BudgetOverview,
   type BudgetPace,
   type BudgetRow,
   type BudgetUserRow,
+  type MonthBilled,
   type UnbudgetedScope,
 } from './budgets';
+export * from './limits';
+export { userTarget, type UserTarget } from './targets';
+export { budgetMap, type BudgetMap, type BudgetRoom, type OwnLimit, type PerUserLimit } from './budgetMap';
+export {
+  limitBoard,
+  limitFocus,
+  shareOnDay,
+  usedOnDay,
+  type LimitBoard,
+  type LimitFocus,
+  type LimitGroup,
+  type LimitPlace,
+  type LimitTarget,
+  type LimitUser,
+  type PlaceScope,
+} from './limitBoard';

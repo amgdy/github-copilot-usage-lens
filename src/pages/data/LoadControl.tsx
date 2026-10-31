@@ -2,10 +2,11 @@ import { useRef, type ChangeEvent } from 'react';
 import { FileUp } from 'lucide-react';
 import { Callout, ProgressBar, Spinner } from '../../components/ui';
 import { msg, t, tp } from '../../i18n';
-import { isGzip, readCollection, readHeadText } from '../../lib/collection';
+import { isGzip, monthOfKey, readCollection, readHeadText, type Collection } from '../../lib/collection';
 import { classifyUpload, type LicenseKind } from '../../lib/licenses';
+import { monthLabel } from '../../lib/utils/date';
 import { fmtInt, pluralize } from '../../lib/utils/format';
-import { loadFiles } from '../../state/loadDataset';
+import { loadFiles, loadSources } from '../../state/loadDataset';
 import { navigate } from '../../state/router';
 import { useApp } from '../../state/store';
 import { listNames } from './text';
@@ -27,9 +28,14 @@ async function readUploadHead(file: File): Promise<string> {
   return classifyUpload(head, file.name) === 'collection' ? head : '';
 }
 
+/** Makes the AI usage report inside a GitHub data file the loaded data, named after the file. */
+const loadUsageReports = (collection: Collection): Promise<boolean> =>
+  loadSources(collection.usageReports.map((report) => ({ name: report.name, data: report.data })), { text: collection.fileName });
+
 /**
  * Sorts the files and sends each one where it belongs: usage reports replace the loaded data, license lists go to the
- * license list in the settings, and a GitHub data file is kept next to the report. The result is kept for the Data page.
+ * license list in the settings, and a GitHub data file is kept next to the report. Without a usage report in the batch,
+ * the AI usage report inside the GitHub data file is loaded. The result is kept for the Data page.
  */
 export async function takeUploads(files: File[]): Promise<UploadOutcome> {
   useApp.getState().setError(null);
@@ -40,6 +46,7 @@ export async function takeUploads(files: File[]): Promise<UploadOutcome> {
     readCollection: (file) => readCollection(file, file.name),
     setCollection: (collection) => useApp.getState().setCollection(collection),
     loadUsage: loadFiles,
+    loadUsageReports,
     hasDataset: () => useApp.getState().dataset !== null,
     roster: () => {
       const settings = useApp.getState().settings;
@@ -142,10 +149,19 @@ function fileLine(file: LicenseFileResult): string {
   return t('{name}: {kind}, {seats}.', { name: file.name, kind: licenseKindLabel(file.kind), seats: pluralize(file.seats, 'seat') });
 }
 
+const monthNames = (months: readonly string[]): string => listNames(months.map((month) => monthLabel(monthOfKey(month))), 24);
+
 /** What the GitHub data file of the batch gave, one sentence per line. */
 function collectionLines(collection: CollectionFileResult): string[] {
   if (collection.error !== null) return [t('{name}: {problem}', { name: collection.name, problem: collection.error })];
   const lines = [t('{name}: GitHub data file, {records}.', { name: collection.name, records: pluralize(collection.records, 'record') })];
+  if (collection.usageMonths.length > 0) {
+    lines.push(t('The usage data comes from the AI usage report in this file: {months}.', { months: monthNames(collection.usageMonths) }));
+  }
+  if (collection.usageMissing.length > 0) {
+    lines.push(t('GitHub had not made the AI usage report for {months} yet. Run the script again in a few minutes to add it.', { months: monthNames(collection.usageMissing) }));
+  }
+  if (collection.usageNotUsed) lines.push(t('The AI usage report in this file was not used, because you chose a usage report CSV too.'));
   if (!collection.complete) lines.push(t('The file ends early, so some data may be missing. Run the script again and wait until it says the file is saved.'));
   if (collection.problems > 0) {
     lines.push(

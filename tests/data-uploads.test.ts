@@ -16,7 +16,7 @@ import {
   type RosterState,
   type UploadDeps,
 } from '../src/pages/data/uploads';
-import { END, header, recordLine, seatRecord, sourceLine, textOf } from './collectionLines';
+import { END, header, recordLine, seatRecord, sourceLine, textOf, usageReportPart } from './collectionLines';
 import { makeCsv } from './helpers';
 
 interface FakeFile {
@@ -59,8 +59,22 @@ const githubFile = (name: string, startedAt: string, logins: readonly string[] =
     END,
   ]));
 
+/** A made-up GitHub data file that also holds the AI usage report of September (and not of August, when it is missing). */
+const githubFileWithUsage = (name: string, logins: readonly string[] = []): FakeFile => {
+  const lines = USAGE.trimEnd().split('\n');
+  return file(name, textOf([
+    header({ startedAt: '2026-10-02T08:00:00Z' }),
+    ...logins.map((login) => recordLine('seat', seatRecord(login, 'octo-org', 'business'))),
+    sourceLine('seats', 'ok', { records: logins.length }),
+    usageReportPart('2026-09', 1, 1, lines),
+    sourceLine('usage-report', 'ok', { month: '2026-09', records: lines.length - 1 }),
+    sourceLine('usage-report', 'failed', { month: '2026-08', records: 0 }),
+    END,
+  ]));
+};
+
 function fakeDependencies(options: { dataset?: boolean; roster?: RosterEntry[]; loadOk?: boolean } = {}) {
-  const calls = { loaded: [] as string[][], saved: [] as RosterState[], errors: [] as string[], collections: [] as Collection[] };
+  const calls = { loaded: [] as string[][], saved: [] as RosterState[], errors: [] as string[], collections: [] as Collection[], reports: [] as string[][] };
   let dataset = options.dataset ?? false;
   let roster: RosterState = { roster: options.roster ?? [] };
   const dependencies: UploadDeps<FakeFile> = {
@@ -70,6 +84,11 @@ function fakeDependencies(options: { dataset?: boolean; roster?: RosterEntry[]; 
     setCollection: (collection) => calls.collections.push(collection),
     loadUsage: (files) => {
       calls.loaded.push(files.map((upload) => upload.name));
+      if (options.loadOk !== false) dataset = true;
+      return Promise.resolve(options.loadOk !== false);
+    },
+    loadUsageReports: (collection) => {
+      calls.reports.push(collection.usageReports.map((report) => report.name));
       if (options.loadOk !== false) dataset = true;
       return Promise.resolve(options.loadOk !== false);
     },
@@ -281,6 +300,46 @@ describe('routeUploads with a GitHub data file', () => {
     expect(out.notice?.mode).toBeNull();
     expect(out.notice?.collection?.seats).toBe(0);
     expect(calls.saved).toHaveLength(0);
+  });
+
+  it('loads the usage data from the AI usage report in the GitHub data file when no CSV is chosen', async () => {
+    const { d: dependencies, calls } = fakeDependencies();
+    const out = await routeUploads([githubFileWithUsage('usage-lens-data.ndjson.gz', ['user-a'])], dependencies);
+    expect(out.usageLoaded).toBe(true);
+    expect(calls.loaded).toHaveLength(0);
+    expect(calls.reports).toEqual([['ai-usage-report-2026-09.csv']]);
+    expect(calls.errors).toHaveLength(0);
+    expect(calls.collections).toHaveLength(1);
+    expect(out.notice?.collection).toMatchObject({ usageMonths: ['2026-09'], usageMissing: ['2026-08'], usageNotUsed: false });
+    expect(calls.saved.at(-1)?.roster.map((rosterEntry) => rosterEntry.user)).toEqual(['user-a']);
+  });
+
+  it('uses a usage report CSV of the same batch instead of the one in the GitHub data file', async () => {
+    const { d: dependencies, calls } = fakeDependencies();
+    const out = await routeUploads([githubFileWithUsage('usage-lens-data.ndjson'), file('usage.csv', USAGE)], dependencies);
+    expect(calls.loaded).toEqual([['usage.csv']]);
+    expect(calls.reports).toHaveLength(0);
+    expect(out.notice?.collection).toMatchObject({ usageMonths: [], usageMissing: [], usageNotUsed: true });
+  });
+
+  it('keeps nothing from the GitHub data file when its AI usage report fails to load', async () => {
+    const { d: dependencies, calls } = fakeDependencies({ loadOk: false });
+    const out = await routeUploads([githubFileWithUsage('usage-lens-data.ndjson', ['user-a'])], dependencies);
+    expect(out).toEqual({ usageLoaded: false, notice: null });
+    expect(calls.reports).toHaveLength(1);
+    expect(calls.collections).toHaveLength(0);
+    expect(calls.saved).toHaveLength(0);
+    // The loader shows its own error.
+    expect(calls.errors).toHaveLength(0);
+  });
+
+  it('says why a GitHub data file could not be read when no data is loaded', async () => {
+    const { d: dependencies, calls } = fakeDependencies();
+    const out = await routeUploads([file('usage-lens-data.ndjson', textOf([header({ version: 99 }), END]))], dependencies);
+    expect(out).toEqual({ usageLoaded: null, notice: null });
+    expect(calls.reports).toHaveLength(0);
+    expect(calls.errors).toHaveLength(1);
+    expect(calls.errors[0]).toMatch(/newer version/);
   });
 
   it('says why a GitHub data file could not be used', async () => {

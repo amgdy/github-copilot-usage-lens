@@ -4,6 +4,12 @@ import type { Collection } from './types';
 /** The longest line the reader takes. A longer line is counted as skipped. */
 export const MAX_LINE_CHARS = 8 * 1024 * 1024;
 
+/** How long the reader works before it lets the page draw again, in milliseconds. */
+const WORK_SLICE_MS = 50;
+
+/** Waits for the next task, so the browser can draw and take clicks while a large file is read. */
+const nextTask = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
+
 /** True when the file starts with the two gzip bytes. */
 export async function isGzip(blob: Blob): Promise<boolean> {
   const head = new Uint8Array(await blob.slice(0, 2).arrayBuffer());
@@ -55,8 +61,13 @@ export async function readCollection(blob: Blob, fileName: string): Promise<Coll
     pendingChars = 0;
     tooLong = false;
   };
+  let sliceStart = performance.now();
   try {
     for (;;) {
+      if (performance.now() - sliceStart > WORK_SLICE_MS) {
+        await nextTask();
+        sliceStart = performance.now();
+      }
       const { value, done } = await chunks.read();
       if (done) break;
       let start = 0;

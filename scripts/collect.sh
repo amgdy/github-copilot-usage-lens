@@ -4,13 +4,18 @@
 #
 # The AI usage report shows who used which model and what it cost. It does not show your seats and seat types, seat
 # changes, budgets, cost centers, members, or the activity that is not billed, such as code completions. This script
-# reads that data from GitHub with the GitHub CLI (gh) and saves it in one file. Load your usage report in
-# GitHub Copilot Usage Lens, then drop this file on the page.
+# reads that data from GitHub with the GitHub CLI (gh) and saves it in one file. For an enterprise, the file holds the
+# AI usage report too, so you drop only this file on GitHub Copilot Usage Lens.
 #
-# It only reads. It changes nothing on GitHub, and the file stays on this computer.
+# It reads and changes no settings on GitHub. When there is no recent AI usage report, it asks GitHub to make one, as
+# the billing page does. The file stays on this computer.
 #
 #   bash scripts/collect.sh            asks what to collect
 #   bash scripts/collect.sh --help     shows every option
+#
+# Or run it straight from GitHub, with no download:
+#
+#   curl -fsSL https://raw.githubusercontent.com/amgdy/github-copilot-usage-lens/main/scripts/collect.sh | bash
 #
 # Needs bash 3.2 or later (the macOS default) and the GitHub CLI (https://cli.github.com).
 # On Windows, use scripts/collect.ps1. Both scripts write the same file format.
@@ -32,7 +37,12 @@ MAX_MONTHS=24
 MAX_PAGES=200
 # Seconds to wait before trying a busy request again: this, then four times this.
 RETRY_SECONDS="${USAGE_LENS_RETRY_SECONDS:-5}"
-ALL_SOURCES="organizations seats seat-summary members teams budgets cost-centers ai-credit-usage usage-summary billing-usage user-metrics scope-metrics user-teams audit-log"
+# How long to wait for GitHub to make the AI usage reports, and how often to ask. GitHub needs about three minutes.
+REPORT_WAIT_SECONDS="${USAGE_LENS_REPORT_WAIT_SECONDS:-900}"
+REPORT_POLL_SECONDS="${USAGE_LENS_REPORT_POLL_SECONDS:-20}"
+# Lines of the AI usage report in each record of the file.
+REPORT_CHUNK_LINES=1000
+ALL_SOURCES="usage-report organizations seats seat-summary members teams budgets cost-centers ai-credit-usage usage-summary billing-usage user-metrics scope-metrics user-teams audit-log"
 ENTERPRISE_SCOPES="read:enterprise manage_billing:copilot manage_billing:enterprise read:org read:audit_log"
 ORGANIZATION_SCOPES="read:org manage_billing:copilot read:audit_log"
 
@@ -57,6 +67,8 @@ token_scopes=""
 scopes_known="no"
 last_http=0
 records_total=0
+usage_report_records=0
+usage_report_months=0
 context_scope=""
 context_target=""
 context_month=""
@@ -95,10 +107,15 @@ GitHub Copilot Usage Lens: data collector
 
 Reads the GitHub data that the AI usage report does not have: GitHub Copilot seats and seat types, seat totals and
 policies, members, budgets, cost centers, monthly billing, activity per user (including code completions) and seat
-changes from the audit log. Saves it in one file for GitHub Copilot Usage Lens. It only reads and changes nothing.
+changes from the audit log. For an enterprise, it adds the AI usage report of each month too. Saves it all in one file
+for GitHub Copilot Usage Lens. It changes no settings on GitHub. When there is no recent AI usage report, it asks
+GitHub to make one, as the billing page does.
 
 Usage:
   bash scripts/collect.sh [options]
+
+To run it straight from GitHub, with no download, put the options after "bash -s --":
+  curl -fsSL https://raw.githubusercontent.com/amgdy/github-copilot-usage-lens/main/scripts/collect.sh | bash -s -- [options]
 
 With no options, the script asks what to collect.
 
@@ -132,6 +149,7 @@ EOF
 show_sources() {
   cat <<'EOF'
 Source            What it reads                                              Who can read it (token scope)
+usage-report      The AI usage report (CSV) of each month, enterprises only  enterprise owner or billing manager (manage_billing:enterprise)
 organizations     Organizations in the enterprise                            enterprise owner (read:enterprise)
 seats             GitHub Copilot seats: user, plan, start, last activity     owner or billing manager (manage_billing:copilot)
 seat-summary      Seat totals and GitHub Copilot policies per organization   organization owner (read:org)
@@ -149,6 +167,9 @@ audit-log         Seat, plan, policy and budget changes                      own
 
 For organizations, the billing sources need an organization owner or billing manager. The activity sources need the
 usage metrics policy for GitHub Copilot set to "Enabled everywhere".
+
+usage-report uses a report from the last 31 days when one covers the month. Otherwise it asks GitHub to make one,
+which takes a few minutes and adds the report to the billing page. It changes no settings.
 EOF
 }
 
@@ -242,6 +263,12 @@ check_options() {
   fi
   case "$RETRY_SECONDS" in
     "" | *[!0-9]*) RETRY_SECONDS=5 ;;
+  esac
+  case "$REPORT_WAIT_SECONDS" in
+    "" | *[!0-9]*) REPORT_WAIT_SECONDS=900 ;;
+  esac
+  case "$REPORT_POLL_SECONDS" in
+    "" | *[!0-9]*) REPORT_POLL_SECONDS=20 ;;
   esac
   check_source_names "$skip_sources"
   check_source_names "$only_sources"
@@ -697,6 +724,12 @@ AUDIT_FILTER='.[] | ((if (.data | type) == "object" then .data else {} end) + .)
 
 TEAMS_FILTER='.[] | ({slug, name} | wrap("team")), "#team \(.slug)"'
 
+# One line per AI usage report on the billing page: id, first day, last day and status.
+REPORT_LIST_FILTER='(.usage_report_exports // [])[] | select(.report_type == "ai_credit")
+  | "#report \(.id)\t\((.start_date // "")[0:10])\t\((.end_date // "")[0:10])\t\(.status // "")"'
+
+REPORT_STATUS_FILTER='"#status \(.status // "")", ((.download_urls // [])[])'
+
 TEAM_MEMBERS_FILTER='.[] | {login: (.login // .user.login)} | select(.login != null) | wrap("team-member")'
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -746,7 +779,7 @@ mark_skipped_sources() {
       else
         add_status "$name" skipped 0 0 "Not selected." ""
       fi
-    elif [ -z "$enterprise" ] && { [ "$name" = organizations ] || [ "$name" = cost-centers ]; }; then
+    elif [ -z "$enterprise" ] && { [ "$name" = organizations ] || [ "$name" = cost-centers ] || [ "$name" = usage-report ]; }; then
       add_status "$name" skipped 0 0 "Only for enterprises." ""
     fi
   done
@@ -895,11 +928,213 @@ collect_teams() {
   end_step
 }
 
+# Adds the lines of one AI usage report file (CSV) to $work/usage-chunks, REPORT_CHUNK_LINES lines per record. Each
+# line becomes a JSON text, so the app can put the file back together. Sets usage_lines and usage_parts.
+wrap_usage_report() {
+  local month="$1" report_id="$2" file_number="$3" file="$4"
+  tr '\000-\010\013\014\016-\037' ' ' <"$file" | awk -v scope="$context_scope" -v target="$context_target" \
+    -v month="$month" -v report="$report_id" -v file_number="$file_number" -v size="$REPORT_CHUNK_LINES" \
+    -v counter="$work/count" '
+    function flush() {
+      if (count == 0) return
+      part++
+      printf "{\"kind\":\"usage-report\",\"scope\":\"%s\",\"target\":\"%s\",\"month\":\"%s\",\"record\":{\"report\":\"%s\",\"file\":%d,\"part\":%d,\"lines\":[%s]}}\n", scope, target, month, report, file_number, part, body
+      body = ""
+      count = 0
+    }
+    {
+      sub(/\r$/, "")
+      gsub(/\\/, "&&")
+      gsub(/"/, "\\\"")
+      gsub(/\t/, "\\t")
+      gsub(/\r/, "\\r")
+      body = body (count > 0 ? "," : "") "\"" $0 "\""
+      count++
+      lines++
+      if (count >= size) flush()
+    }
+    END {
+      flush()
+      print lines + 0, part + 0 > counter
+    }
+  ' >>"$work/usage-chunks"
+  read -r usage_lines usage_parts <"$work/count"
+}
+
+# Finds the AI usage report of every chosen month on the billing page (GitHub keeps them for 31 days), or asks GitHub
+# to make one. GitHub makes them while the other data is read, and read_usage_reports downloads them at the end.
+request_usage_reports() {
+  local base="$1" month first last month_end found report_id summary ready=0 asked=0
+  : >"$work/usage-reports"
+  report_requested_at=$(date +%s)
+  begin_step "AI usage report"
+  if ! run_gh "$work/report-list" "$base" --jq "$REPORT_LIST_FILTER"; then
+    add_status usage-report failed 0 "$last_http" "$last_error" "$base"
+    end_step
+    return 1
+  fi
+  control_lines "$work/report-list" report >"$work/report-list.tsv"
+  for month in $month_keys; do
+    first="$month-01"
+    month_end="$month-$(days_in_month "${month%-*}" "${month#*-}")"
+    last="$month_end"
+    if [[ "$last" > "$today" ]]; then
+      last="$today"
+    fi
+    # A finished report first, then one GitHub is still making. It must cover the whole month and no other month.
+    found=$(awk -F '\t' -v first="$first" -v last="$last" -v month_end="$month_end" '
+      $2 == first && ($3 "") >= last && ($3 "") <= month_end {
+        if ($4 == "completed") { print $1; done = 1; exit }
+        if ($4 == "processing" && pick == "") pick = $1
+      }
+      END { if (!done && pick != "") print pick }
+    ' "$work/report-list.tsv")
+    case "$found" in
+      "" | *[!A-Za-z0-9-]*) ;;
+      *)
+        printf '%s\t%s\n' "$month" "$found" >>"$work/usage-reports"
+        ready=$((ready + 1))
+        continue
+        ;;
+    esac
+    context_month="$month"
+    if run_gh "$work/created" "$base" --method POST -f report_type=ai_credit -f start_date="$first" \
+      -f end_date="$last" --jq '.id // ""'; then
+      report_id=$(head -n 1 "$work/created" | tr -d '\r')
+      case "$report_id" in
+        "" | *[!A-Za-z0-9-]*)
+          add_status usage-report failed 0 0 "GitHub did not say which report it makes." "$base"
+          ;;
+        *)
+          printf '%s\t%s\n' "$month" "$report_id" >>"$work/usage-reports"
+          asked=$((asked + 1))
+          ;;
+      esac
+    else
+      add_status usage-report failed 0 "$last_http" "$last_error" "$base"
+      if no_access_yet; then
+        context_month=""
+        break
+      fi
+    fi
+    context_month=""
+  done
+  if [ ! -s "$work/usage-reports" ]; then
+    end_step
+    return 1
+  fi
+  summary="$ready found, $asked asked for"
+  if [ "$step_failed" -gt 0 ]; then
+    say "${yellow}$summary, $step_failed failed${reset} ${dim}$(failure_text)${reset}"
+  else
+    say "${green}$summary${reset} ${dim}(read at the end)${reset}"
+  fi
+  return 0
+}
+
+# Downloads every file of one finished AI usage report. Sets usage_rows. Nothing is kept unless every file worked.
+download_usage_report() {
+  local month="$1" report_id="$2" endpoint="$3" link magic file_number=0
+  usage_rows=0
+  : >"$work/usage-chunks"
+  grep '^https://' "$work/report" >"$work/links"
+  if [ ! -s "$work/links" ]; then
+    add_status usage-report failed 0 0 "GitHub gave no file for this report." "$endpoint"
+    return 1
+  fi
+  while IFS= read -r link <&3; do
+    file_number=$((file_number + 1))
+    rm -f "$work/download" "$work/report.txt"
+    if ! download "$link" "$work/download"; then
+      add_status usage-report failed 0 0 \
+        "Could not download the report file: $(head -n 1 "$work/download-error" 2>/dev/null)" "$endpoint"
+      return 1
+    fi
+    magic=$(head -c 2 "$work/download" | od -An -tx1 | tr -d ' \n')
+    if [ "$magic" = "1f8b" ]; then
+      if ! gzip -dc "$work/download" >"$work/report.txt"; then
+        add_status usage-report failed 0 0 "Could not unpack the report file." "$endpoint"
+        return 1
+      fi
+    else
+      mv "$work/download" "$work/report.txt"
+    fi
+    wrap_usage_report "$month" "$report_id" "$file_number" "$work/report.txt"
+    # The first line of each file names the columns.
+    if [ "$usage_lines" -gt 0 ]; then
+      usage_rows=$((usage_rows + usage_lines - 1))
+    fi
+    usage_report_records=$((usage_report_records + usage_parts))
+  done 3<"$work/links"
+  rm -f "$work/download" "$work/report.txt"
+  cat "$work/usage-chunks" >>"$work/records.ndjson"
+  records_total=$((records_total + $(grep -c '' "$work/usage-chunks")))
+  add_status usage-report ok "$usage_rows" 200 "" "$endpoint"
+  usage_report_months=$((usage_report_months + 1))
+  return 0
+}
+
+# Waits until GitHub has made the AI usage reports, at most REPORT_WAIT_SECONDS after they were asked for, and
+# downloads them. A report that is not ready by then is reported, and the next run uses it.
+read_usage_reports() {
+  local base="$1" month report_id state deadline waiting=no
+  if [ ! -s "$work/usage-reports" ]; then
+    return 0
+  fi
+  deadline=$((report_requested_at + REPORT_WAIT_SECONDS))
+  cp "$work/usage-reports" "$work/usage-pending"
+  begin_step "AI usage report"
+  while :; do
+    : >"$work/usage-waiting"
+    while IFS="$(printf '\t')" read -r month report_id <&3; do
+      context_month="$month"
+      if ! run_gh "$work/report" "$base/$report_id" --jq "$REPORT_STATUS_FILTER"; then
+        add_status usage-report failed 0 "$last_http" "$last_error" "$base/$report_id"
+        continue
+      fi
+      state=$(control_lines "$work/report" status | head -n 1 | tr -d '\r')
+      case "$state" in
+        completed) download_usage_report "$month" "$report_id" "$base/$report_id" ;;
+        processing) printf '%s\t%s\n' "$month" "$report_id" >>"$work/usage-waiting" ;;
+        *) add_status usage-report failed 0 0 "GitHub could not make the report. Run the script again." "$base/$report_id" ;;
+      esac
+    done 3<"$work/usage-pending"
+    context_month=""
+    if [ ! -s "$work/usage-waiting" ]; then
+      break
+    fi
+    if [ "$(date +%s)" -ge "$deadline" ]; then
+      while IFS="$(printf '\t')" read -r month report_id <&3; do
+        context_month="$month"
+        add_status usage-report failed 0 0 \
+          "GitHub is still making the report. Run the script again in a few minutes. It uses the same report." \
+          "$base/$report_id"
+      done 3<"$work/usage-waiting"
+      context_month=""
+      break
+    fi
+    if [ "$waiting" = no ]; then
+      printf '%s(GitHub is making it, this takes a few minutes)%s ' "$dim" "$reset"
+      waiting="yes"
+    fi
+    printf '%s.%s' "$dim" "$reset"
+    sleep "$REPORT_POLL_SECONDS"
+    mv -f "$work/usage-waiting" "$work/usage-pending"
+  done
+  if [ "$waiting" = yes ]; then
+    printf ' '
+  fi
+  end_step
+}
+
 collect_enterprise() {
   local slug="$enterprise" found_organizations="" detail_organizations name
   set_context enterprise "$slug"
   say ""
   say "${bold}Enterprise $slug${reset}"
+  if wants usage-report; then
+    request_usage_reports "/enterprises/$slug/settings/billing/reports"
+  fi
   if wants organizations; then
     begin_step "Organizations"
     fetch organizations graphql "$ORGANIZATIONS_FILTER" --paginate \
@@ -931,6 +1166,10 @@ collect_enterprise() {
   fi
   if wants teams; then
     collect_teams "/enterprises/$slug/teams" memberships "Enterprise teams"
+  fi
+  if wants usage-report; then
+    set_context enterprise "$slug"
+    read_usage_reports "/enterprises/$slug/settings/billing/reports"
   fi
 
   # Seat totals, policies and teams of each organization. Without --org, every organization found above.
@@ -1161,6 +1400,19 @@ choose_target() {
 }
 
 ask_options() {
+  if [ -n "$enterprise" ] && [ -z "$only_sources" ]; then
+    case " $skip_sources " in
+      *" usage-report "*) ;;
+      *)
+        say ""
+        say "This script can get the AI usage report too. Then this one file is all you need in the app."
+        note "If there is no recent report, GitHub makes one, as the billing page does. This takes a few minutes."
+        if ! ask_yes_no "Get the AI usage report?" y; then
+          skip_sources="$skip_sources usage-report"
+        fi
+        ;;
+    esac
+  fi
   if [ -z "$months" ]; then
     while :; do
       ask "How many months of billing data and changes, from 1 to $MAX_MONTHS? [3]:" 3
@@ -1204,7 +1456,7 @@ needed_scopes() {
     if wants seats; then
       list="$list manage_billing:copilot"
     fi
-    if wants budgets || wants cost-centers || wants ai-credit-usage || wants usage-summary || wants billing-usage; then
+    if wants usage-report || wants budgets || wants cost-centers || wants ai-credit-usage || wants usage-summary || wants billing-usage; then
       list="$list manage_billing:enterprise"
     fi
     if wants seat-summary || wants teams; then
@@ -1319,7 +1571,7 @@ prepare_output() {
 confirm_plan() {
   local name shown=""
   for name in $selected_sources; do
-    if [ -z "$enterprise" ] && { [ "$name" = organizations ] || [ "$name" = cost-centers ]; }; then
+    if [ -z "$enterprise" ] && { [ "$name" = organizations ] || [ "$name" = cost-centers ] || [ "$name" = usage-report ]; }; then
       continue
     fi
     shown="${shown:+$shown }$name"
@@ -1333,6 +1585,9 @@ confirm_plan() {
   fi
   say "  Months:   ${month_keys%% *} to ${month_keys##* }"
   say "  Sources:  $shown"
+  if [ -n "$enterprise" ] && wants usage-report; then
+    say "  Report:   the AI usage report of each month. GitHub makes it if there is no recent one."
+  fi
   say "  File:     $output"
   if ! ask_yes_no "Start?" y; then
     say "Stopped. Nothing was saved."
@@ -1430,8 +1685,17 @@ print_summary() {
   say "Next steps:"
   say "  1. Open GitHub Copilot Usage Lens: https://amgdy.github.io/github-copilot-usage-lens/"
   say "     or run npm run dev in the repository folder."
-  say "  2. Load your AI usage report, the CSV file from GitHub billing."
-  say "  3. Drop this file on the page. It is read in your browser and never uploaded."
+  if [ "$usage_report_records" -gt 0 ] && [ "$usage_report_months" -lt "$months" ]; then
+    say "  2. Drop this file on the page. It has the AI usage report of $usage_report_months of $months months."
+    say "     For the other months, run this script again in a few minutes."
+    say "     It is read in your browser and never uploaded."
+  elif [ "$usage_report_records" -gt 0 ]; then
+    say "  2. Drop this file on the page. It has your AI usage report too, so you need no other file."
+    say "     It is read in your browser and never uploaded."
+  else
+    say "  2. Load your AI usage report, the CSV file from GitHub billing."
+    say "  3. Drop this file on the page. It is read in your browser and never uploaded."
+  fi
   note "The file holds GitHub logins and activity. Keep it safe and delete it when you are done."
 }
 
@@ -1444,9 +1708,25 @@ cleanup() {
   fi
 }
 
+# With curl ... | bash, bash reads this script from its input, so the answers must come from the terminal. When main
+# runs, the whole script has been read. $0 is the name of bash only when the script does not come from a file.
+use_terminal_for_answers() {
+  if [ "$assume_yes" = yes ] || [ -t 0 ] || [ ! -t 1 ]; then
+    return 0
+  fi
+  case "${0##*/}" in
+    bash | sh)
+      if (exec </dev/tty) 2>/dev/null; then
+        exec </dev/tty
+      fi
+      ;;
+  esac
+}
+
 main() {
   local name
   check_options
+  use_terminal_for_answers
   if [ "$assume_yes" != yes ] && [ -t 0 ] && [ -t 1 ]; then
     interactive="yes"
   fi
@@ -1464,7 +1744,7 @@ main() {
   today=$(date -u +%Y-%m-%d)
 
   say "${bold}GitHub Copilot Usage Lens: data collector${reset} ${dim}$COLLECTOR_VERSION${reset}"
-  note "It only reads. It changes nothing on GitHub, and the file stays on this computer."
+  note "It changes no settings on GitHub, and the file stays on this computer."
   check_gh
   check_login
   say "Signed in to $host as ${bold}${login:-unknown}${reset}."
@@ -1507,4 +1787,6 @@ main() {
   print_summary yes
 }
 
-main
+# Keep main and exit on one line. With curl ... | bash, the input is the terminal by now, and bash must not read any
+# more commands from it.
+main; exit

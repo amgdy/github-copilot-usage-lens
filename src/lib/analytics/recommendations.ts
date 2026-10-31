@@ -1041,8 +1041,9 @@ export function buildRecommendations(context: RecContext): Recommendation[] {
 
     if (githubBudget !== null && !narrowed) {
       const amount = fmtUSD(githubBudget.amount, 0);
-      // The report's view of the same budget, only when the analysis compares with the same amount.
-      const reportBudget = pool.budget !== null && Math.abs(pool.budget.monthlyBudget - githubBudget.amount) < 0.005 ? pool.budget : null;
+      // The report's view of the same budget, only when the analysis compares with the same amount in the month the data was collected.
+      const sameMonth = pool.latest !== null && pool.latest.month === monthOfKey(github.collection.header.day.slice(0, 7));
+      const reportBudget = sameMonth && pool.budget !== null && Math.abs(pool.budget.monthlyBudget - githubBudget.amount) < 0.005 ? pool.budget : null;
       const consumedShare = githubBudget.consumed !== null && githubBudget.amount > 0 ? githubBudget.consumed / githubBudget.amount : null;
       const reached = (consumedShare ?? 0) >= 1 || (reportBudget?.burn ?? 0) >= 1;
       const projectedOver = (reportBudget?.projectedBurn ?? 0) >= 1 || (reportBudget !== null && reportBudget.hitDate !== null);

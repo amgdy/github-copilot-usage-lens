@@ -88,7 +88,7 @@ export function BudgetPaceCard({ overview, collection, store }: { overview: Budg
   const firstChoice = overview.projectedOut[0]?.budget.id ?? choices.find((row) => row.level !== 'used-up')?.budget.id ?? choices[0]?.budget.id ?? '';
   const [picked, setPicked] = useState(firstChoice);
   const selected = choices.find((row) => row.budget.id === picked) ?? choices[0];
-  const pace = useMemo(() => (selected ? budgetPace(collection, store, selected.budget) : null), [collection, store, selected]);
+  const pace = useMemo(() => (selected ? budgetPace(collection, store, selected.budget, overview.billed) : null), [collection, store, selected, overview.billed]);
   const monthStart = monthStartDay(collectionMonth(collection));
   const option = useMemo(() => (pace && selected ? paceOption(pace, selected.budget.amount, monthStart, colors) : {}), [pace, selected, monthStart, colors]);
 

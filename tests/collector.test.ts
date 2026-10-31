@@ -5,6 +5,7 @@ import { delimiter, join } from 'node:path';
 import { gunzipSync } from 'node:zlib';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { collectionLicenseParse, pickBudget, readCollection } from '../src/lib/collection';
+import { storedText } from './collectionLines';
 import { GH_DEFAULT_API_VERSION, MOCK_HOST, MOCK_TOKEN, startMockGitHub, type MockGitHub, type RecordedRequest } from './collectorMock';
 
 /*
@@ -27,6 +28,7 @@ const CAN_RUN =
   toolWorks('bash', ['--version']) &&
   toolWorks('openssl', ['version']);
 const HAS_POWERSHELL = CAN_RUN && toolWorks('pwsh', ['-NoLogo', '-NoProfile', '-Command', 'exit 0']);
+const HAS_SCRIPT = CAN_RUN && toolWorks('script', ['--version']);
 
 interface BundleLine {
   kind: string;
@@ -116,9 +118,21 @@ const POWERSHELL_NAMES: Record<string, string> = {
 };
 const powershellArgs = (args: readonly string[]) => args.map((arg) => POWERSHELL_NAMES[arg] ?? arg);
 
+const USAGE_REPORTS_PATH = '/api/v3/enterprises/octocorp/settings/billing/reports';
 const apiRequests = (requests: RecordedRequest[]) => requests.filter((request) => request.path.startsWith('/api/'));
 const requestsTo = (requests: RecordedRequest[], ending: string) => requests.filter((request) => request.path.endsWith(ending));
 const sourcesOf = (bundle: Bundle, id: string) => bundle.sources.filter((line) => line.id === id);
+const requestLines = (requests: RecordedRequest[]) => requests.map((request) => `${request.method} ${request.path}?${request.query}`);
+
+/** An argument for a PowerShell command line. Options and plain names stay as typed, so octo-org,octo-labs is a list. */
+const powershellArgument = (value: string) => (/^[\w.,-]+$/.test(value) ? value : `'${value.replaceAll("'", "''")}'`);
+
+/**
+ * How a script is started. `bash-piped` reads the script from its input, as curl ... | bash does. `bash-terminal` does
+ * the same in a pretend terminal, so the script asks its questions. `powershell-block` runs the script text as a script
+ * block, as the command from the app does after irm downloads it.
+ */
+type RunMode = 'bash' | 'bash-piped' | 'bash-terminal' | 'powershell' | 'powershell-block';
 
 /** The full path of a program on PATH, so a test can run a script with only some programs. */
 function findProgram(name: string): string {
@@ -174,14 +188,28 @@ describe.skipIf(!CAN_RUN)('data collector scripts against a pretend GitHub', () 
       POWERSHELL_TELEMETRY_OPTOUT: '1',
       POWERSHELL_UPDATECHECK: 'Off',
       USAGE_LENS_RETRY_SECONDS: '0',
+      USAGE_LENS_REPORT_POLL_SECONDS: '0',
     };
   }
 
-  function run(script: 'bash' | 'powershell', args: string[], changes: NodeJS.ProcessEnv = {}): Promise<RunResult> {
-    const [command, commandArgs] =
-      script === 'bash' ? ['bash', [BASH_SCRIPT, ...args]] : ['pwsh', ['-NoLogo', '-NoProfile', '-NonInteractive', '-File', POWERSHELL_SCRIPT, ...args]];
+  function run(mode: RunMode, args: string[], changes: NodeJS.ProcessEnv = {}, typed?: string): Promise<RunResult> {
+    const powershell = ['pwsh', '-NoLogo', '-NoProfile', '-NonInteractive'];
+    const startWith: Record<RunMode, { command: string[]; input?: Buffer | string }> = {
+      bash: { command: ['bash', BASH_SCRIPT, ...args] },
+      'bash-piped': { command: ['bash', '-s', '--', ...args], input: readFileSync(BASH_SCRIPT) },
+      'bash-terminal': { command: ['script', '-qec', `cat '${BASH_SCRIPT}' | bash -s -- ${args.join(' ')}`, '/dev/null'], input: typed ?? '' },
+      powershell: { command: [...powershell, '-File', POWERSHELL_SCRIPT, ...args] },
+      'powershell-block': {
+        command: [...powershell, '-Command', `& ([scriptblock]::Create((Get-Content -Raw -LiteralPath '${POWERSHELL_SCRIPT}'))) ${args.map(powershellArgument).join(' ')}`],
+      },
+    };
+    const [command, ...commandArgs] = startWith[mode].command;
+    const input = startWith[mode].input;
     return new Promise((resolve, reject) => {
-      const child = spawn(command as string, commandArgs as string[], { cwd: folder, env: { ...environment(), ...changes }, stdio: ['ignore', 'pipe', 'pipe'] });
+      const child = spawn(command, commandArgs, { cwd: folder, env: { ...environment(), ...changes }, stdio: ['pipe', 'pipe', 'pipe'] });
+      // A script that stops early, for example on a wrong option, closes its input before it has all been sent.
+      child.stdin.on('error', () => undefined);
+      child.stdin.end(input ?? '');
       let output = '';
       let errors = '';
       child.stdout.on('data', (chunk: Buffer) => (output += chunk.toString('utf8')));
@@ -200,7 +228,8 @@ describe.skipIf(!CAN_RUN)('data collector scripts against a pretend GitHub', () 
       expect(request.authorization, request.path).toContain(MOCK_TOKEN);
       expect(request.apiVersion, request.path).toBe(apiVersion);
       expect(['GET', 'POST'], request.path).toContain(request.method);
-      if (request.method === 'POST') expect(request.path).toBe('/api/graphql');
+      // The only change a script may ask for: GitHub makes an AI usage report.
+      if (request.method === 'POST') expect(['/api/graphql', USAGE_REPORTS_PATH]).toContain(request.path);
     }
     for (const request of requests.filter((item) => item.path.startsWith('/downloads/'))) {
       expect(request.authorization, request.path).toBeUndefined();
@@ -231,6 +260,7 @@ describe.skipIf(!CAN_RUN)('data collector scripts against a pretend GitHub', () 
     }
     expect((await run('bash', ['--version'])).output).toMatch(/^collect\.sh \d+\.\d+\.\d+/);
     expect((await run('bash', ['--list-sources'])).output).toContain('audit-log');
+    expect((await run('bash', ['--list-sources'])).output).toContain('usage-report');
     expect((await run('bash', ['--help'])).output).toContain('--enterprise SLUG');
     expect(mock.requests).toHaveLength(0);
   });
@@ -252,7 +282,7 @@ describe.skipIf(!CAN_RUN)('data collector scripts against a pretend GitHub', () 
     expect(countByKind(bundle.records)).toEqual({
       organization: 2, seat: 3, 'seat-total': 1, member: 3, budget: 3, 'budget-user': 2, 'cost-center': 1,
       'ai-credit-usage': 2, 'usage-summary': 2, 'billing-usage': 2, 'user-metrics': 4, 'scope-metrics': 1,
-      'user-teams': 2, 'audit-event': 4, team: 2, 'team-member': 2, 'seat-summary': 1,
+      'user-teams': 2, 'audit-event': 4, team: 2, 'team-member': 2, 'seat-summary': 1, 'usage-report': 4,
     });
     expectPrivateFieldsLeftOut(bundle);
 
@@ -310,6 +340,22 @@ describe.skipIf(!CAN_RUN)('data collector scripts against a pretend GitHub', () 
     expect(requestsTo(mock.requests, '/downloads/users-28-day.ndjson.gz')).toHaveLength(1);
     expect(leftoverWork()).toEqual([]);
 
+    // The finished report of the older month is used again, and GitHub makes one for this month.
+    const [olderMonth, newerMonth] = mock.usageMonths;
+    const created = mock.requests.filter((request) => request.method === 'POST' && request.path === USAGE_REPORTS_PATH);
+    expect(created.map((request) => JSON.parse(request.body))).toEqual([
+      { report_type: 'ai_credit', start_date: `${newerMonth}-01`, end_date: today.toString() },
+    ]);
+    expect(requestsTo(mock.requests, '/settings/billing/reports/report-old')).toHaveLength(1);
+    expect(requestsTo(mock.requests, '/settings/billing/reports/report-new')).toHaveLength(2);
+    expect(sourcesOf(bundle, 'usage-report').map((line) => [line.month, line.status, line.records])).toEqual([
+      [olderMonth, 'ok', 3], [newerMonth, 'ok', 1500],
+    ]);
+    expect(bundle.records.filter((line) => line.kind === 'usage-report').map((line) => [line.month, line.record.file, line.record.part])).toEqual([
+      [olderMonth, 1, 1], [olderMonth, 2, 1], [newerMonth, 1, 1], [newerMonth, 1, 2],
+    ]);
+    expect(result.output).toContain('It has your AI usage report too, so you need no other file.');
+
     // The app reads the file the script wrote.
     const collection = await readCollection(new Blob([readFileSync(file)]), 'enterprise.ndjson');
     expect(collection).toMatchObject({ complete: true, skippedLines: 0, records: bundle.records.length, capped: false });
@@ -335,6 +381,44 @@ describe.skipIf(!CAN_RUN)('data collector scripts against a pretend GitHub', () 
     ]);
     expect(seats[0].teams).toEqual(['platform']);
     expect(seats[1].teams.length).toBeGreaterThan(0);
+
+    // The AI usage report comes back as the CSV files GitHub made, byte for byte apart from line ends.
+    expect(collection.usageReports.map((report) => [report.month, report.name, report.lines])).toEqual([
+      [olderMonth, `ai-usage-report-${olderMonth}-1.csv`, 3],
+      [olderMonth, `ai-usage-report-${olderMonth}-2.csv`, 2],
+      [newerMonth, `ai-usage-report-${newerMonth}.csv`, 1501],
+    ]);
+    const olderText = await storedText(collection.usageReports[0].data);
+    expect(olderText.startsWith('\uFEFF"date"')).toBe(true);
+    expect(olderText).not.toContain('\r');
+    expect(olderText).toContain('"Team ""North"", \\ desk\tA"');
+    const newerText = await storedText(collection.usageReports[2].data);
+    expect(newerText.split('\n')).toHaveLength(1502);
+    expect(newerText).toContain('"Person1499_nwind"');
+  }, RUN_TIMEOUT);
+
+  it('says which AI usage reports GitHub has not made yet', async () => {
+    const file = join(folder, 'usage-report.ndjson');
+    const result = await run('bash', ['--enterprise', 'octocorp', '--months', '2', '--only', 'usage-report', '--plain', '--yes', '--hostname', MOCK_HOST, '--output', file], {
+      USAGE_LENS_REPORT_WAIT_SECONDS: '0',
+    });
+    expect(result.errors).toBe('');
+    expect(result.code, result.output).toBe(0);
+    const bundle = readBundle(file);
+    const [olderMonth, newerMonth] = mock.usageMonths;
+    expect(sourcesOf(bundle, 'usage-report').map((line) => [line.month, line.status, line.records])).toEqual([
+      [olderMonth, 'ok', 3], [newerMonth, 'failed', 0],
+    ]);
+    expect(sourcesOf(bundle, 'usage-report')[1].message).toContain('GitHub is still making the report.');
+    expect(result.output).toContain('It has the AI usage report of 1 of 2 months.');
+    const collection = await readCollection(new Blob([readFileSync(file)]), 'usage-report.ndjson');
+    expect(collection.usageReports.map((report) => report.month)).toEqual([olderMonth, olderMonth]);
+
+    // Without the report the script sends no change to GitHub.
+    mock.reset();
+    const skipped = await run('bash', ['--enterprise', 'octocorp', '--months', '2', '--skip', 'usage-report', '--plain', '--yes', '--hostname', MOCK_HOST, '--output', join(folder, 'no-report.ndjson')]);
+    expect(skipped.code, skipped.output).toBe(0);
+    expect(mock.requests.filter((request) => request.path.includes('/settings/billing/reports'))).toEqual([]);
   }, RUN_TIMEOUT);
 
   it('reads an organization with the activity of every day', async () => {
@@ -357,6 +441,7 @@ describe.skipIf(!CAN_RUN)('data collector scripts against a pretend GitHub', () 
     expectPrivateFieldsLeftOut(bundle);
 
     expect(bundle.sources.filter((line) => line.status === 'skipped' && !line.endpoint).map((line) => [line.id, line.message])).toEqual([
+      ['usage-report', 'Only for enterprises.'],
       ['organizations', 'Only for enterprises.'],
       ['teams', 'Not selected. Add --teams to read team members.'],
       ['cost-centers', 'Only for enterprises.'],
@@ -406,6 +491,37 @@ describe.skipIf(!CAN_RUN)('data collector scripts against a pretend GitHub', () 
     expect(rest.every((request) => request.apiVersion === GH_DEFAULT_API_VERSION)).toBe(true);
   }, RUN_TIMEOUT);
 
+  it('runs the same when piped into bash, as the command from the app does', async () => {
+    const fileRun = join(folder, 'bash-from-file.ndjson');
+    const pipedRun = join(folder, 'bash-from-pipe.ndjson');
+    expect((await run('bash', enterpriseArgs(fileRun))).code).toBe(0);
+    const fileRequests = requestLines(mock.requests);
+    mock.reset();
+    const result = await run('bash-piped', enterpriseArgs(pipedRun));
+    expect(result.errors).toBe('');
+    expect(result.code, result.output).toBe(0);
+    expect(requestLines(mock.requests)).toEqual(fileRequests);
+    expect(comparable(readBundle(pipedRun))).toEqual(comparable(readBundle(fileRun)));
+    expect(leftoverWork()).toEqual([]);
+
+    const failed = await run('bash-piped', ['--org', 'bad/name', '--yes']);
+    expect(failed.code).toBe(1);
+    expect(failed.errors).toContain('is not valid');
+  }, RUN_TIMEOUT);
+
+  it.skipIf(!HAS_SCRIPT)('asks in the terminal when piped into bash, and runs nothing typed after it ends', async () => {
+    const file = join(folder, 'bash-terminal.ndjson');
+    const marker = join(folder, 'typed-after-the-end');
+    // y answers "Start?". The next line is typed while the script runs; bash must not run it when the script ends.
+    const result = await run('bash-terminal', ['--org', 'octo-org', '--only', 'seat-summary', '--months', '3', '--plain', '--hostname', MOCK_HOST, '--output', file], {}, `y\ntouch '${marker}'\n`);
+    expect(result.code, result.output).toBe(0);
+    expect(result.output).toContain('Ready to read');
+    expect(result.output).toContain('Start?');
+    expect(readBundle(file).header).toMatchObject({ scope: 'organization', organizations: ['octo-org'] });
+    expect(existsSync(marker)).toBe(false);
+    expect(leftoverWork()).toEqual([]);
+  }, RUN_TIMEOUT);
+
   describe.skipIf(!HAS_POWERSHELL)('PowerShell', () => {
     it('writes the same data as bash', async () => {
       for (const [name, args] of [
@@ -419,12 +535,12 @@ describe.skipIf(!CAN_RUN)('data collector scripts against a pretend GitHub', () 
         mock.reset();
         const bashResult = await run('bash', bashArgs);
         expect(bashResult.code, bashResult.output).toBe(0);
-        const bashRequests = mock.requests.map((request) => `${request.method} ${request.path}?${request.query}`);
+        const bashRequests = requestLines(mock.requests);
         mock.reset();
         const powershellResult = await run('powershell', powershellArgs(args(powershellFile)));
         expect(powershellResult.errors, name).toBe('');
         expect(powershellResult.code, powershellResult.output).toBe(0);
-        const powershellRequests = mock.requests.map((request) => `${request.method} ${request.path}?${request.query}`);
+        const powershellRequests = requestLines(mock.requests);
         expect(powershellRequests, name).toEqual(bashRequests);
         expectSafeRequests(mock.requests, '2026-03-10');
 
@@ -438,6 +554,29 @@ describe.skipIf(!CAN_RUN)('data collector scripts against a pretend GitHub', () 
         expect(leftoverWork(), name).toEqual([]);
       }
     }, RUN_TIMEOUT * 2);
+
+    it('runs the same as a script block, as the command from the app does', async () => {
+      const fileRun = join(folder, 'powershell-from-file.ndjson');
+      const blockRun = join(folder, 'powershell-from-block.ndjson');
+      expect((await run('powershell', powershellArgs(organizationArgs(fileRun)))).code).toBe(0);
+      const fileRequests = requestLines(mock.requests);
+      mock.reset();
+      const result = await run('powershell-block', powershellArgs(organizationArgs(blockRun)));
+      expect(result.errors).toBe('');
+      expect(result.code, result.output).toBe(0);
+      expect(requestLines(mock.requests)).toEqual(fileRequests);
+      expect(comparable(readBundle(blockRun))).toEqual(comparable(readBundle(fileRun)));
+      expect(leftoverWork()).toEqual([]);
+
+      const listFile = join(folder, 'powershell-block-list.ndjson');
+      const listed = await run('powershell-block', ['-Org', 'octo-org,octo-labs', '-Only', 'seat-summary', '-Plain', '-Yes', '-Hostname', MOCK_HOST, '-Output', listFile]);
+      expect(listed.code, listed.output + listed.errors).toBe(0);
+      expect(readBundle(listFile).header).toMatchObject({ organizations: ['octo-org', 'octo-labs'] });
+
+      const failed = await run('powershell-block', ['-Org', 'bad/name', '-Yes']);
+      expect(failed.code).toBe(1);
+      expect(failed.errors).toContain('is not valid');
+    }, RUN_TIMEOUT);
 
     it('downloads the report files without curl', async () => {
       const programs = join(folder, 'programs-without-curl');

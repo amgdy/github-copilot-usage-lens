@@ -14,8 +14,11 @@ export interface DocLink {
 
 const DOCS = 'https://docs.github.com/en/enterprise-cloud@latest';
 
+/** The GitHub repository with the source code of this app, as owner/name. */
+export const APP_REPOSITORY = 'amgdy/github-copilot-usage-lens';
+
 /** The GitHub repository with the source code of this app. */
-export const APP_REPOSITORY_URL = 'https://github.com/amgdy/github-copilot-usage-lens';
+export const APP_REPOSITORY_URL = `https://github.com/${APP_REPOSITORY}`;
 
 /** The part of the README that explains the collector scripts. */
 export const APP_COLLECTOR_URL = `${APP_REPOSITORY_URL}#collect-more-data-from-github`;
@@ -169,9 +172,11 @@ export const LINKS = {
   },
   metricsData: { label: 'GitHub Copilot metrics data properties', url: 'https://docs.github.com/en/copilot/reference/metrics-data', source: 'GitHub Docs' },
   billingUsageApi: { label: 'REST API endpoints for billing usage', url: 'https://docs.github.com/en/rest/billing/usage', source: 'GitHub Docs' },
+  usageReportsApi: { label: 'REST API endpoints for usage reports', url: `${DOCS}/rest/billing/usage-reports`, source: 'GitHub Docs' },
   costCentersApi: { label: 'REST API endpoints for cost centers', url: 'https://docs.github.com/en/rest/billing/cost-centers', source: 'GitHub Docs' },
   budgetsApi: { label: 'REST API endpoints for budgets', url: 'https://docs.github.com/en/rest/billing/budgets', source: 'GitHub Docs' },
   teamMembersApi: { label: 'REST API endpoints for team members', url: 'https://docs.github.com/en/rest/teams/members', source: 'GitHub Docs' },
+  githubCli: { label: 'GitHub CLI quickstart', url: 'https://docs.github.com/en/github-cli/github-cli/quickstart', source: 'GitHub Docs' },
   auditLogs: {
     label: 'Reviewing audit logs for GitHub Copilot',
     url: 'https://docs.github.com/en/copilot/how-tos/administer-copilot/manage-for-enterprise/review-audit-logs',
@@ -197,7 +202,8 @@ export const TOPIC_LINKS = {
   agents: ['agentMode', 'copilotOnGitHub', 'codeReview', 'cliInstall', 'usageBilling'],
   policies: ['policies', 'managePolicies', 'configureModels', 'manageModels'],
   adoption: ['rollOut', 'usageDashboard', 'rolloutGuide', 'learnFundamentals1', 'learnFundamentals2'],
-  enrichment: ['seatsApi', 'activityReport', 'usageMetricsApi', 'usageMetricsData', 'billingUsageApi', 'costCentersApi', 'teamMembersApi', 'budgetsApi', 'auditLogs'],
+  enrichment: ['seatsApi', 'activityReport', 'usageMetricsApi', 'usageMetricsData', 'billingUsageApi', 'usageReportsApi', 'costCentersApi', 'teamMembersApi', 'budgetsApi', 'auditLogs'],
+  collector: ['githubCli', 'usageReportsApi', 'billingUsageApi', 'budgetsApi', 'seatsApi'],
 } as const satisfies Record<string, readonly LinkId[]>;
 
 export type LinkTopic = keyof typeof TOPIC_LINKS;

@@ -12,8 +12,13 @@ const arabic: Dict = {
   'The GitHub data file is empty.': 'ملف بيانات GitHub فارغ.',
 
   // Loading the file
-  'This is a GitHub data file from the collector script. Load your usage report first, or choose both files together.':
-    'هذا ملف بيانات GitHub من سكربت جمع البيانات. حمّل تقرير الاستخدام أولًا، أو اختر الملفين معًا.',
+  'This GitHub data file has no AI usage report. Choose it together with the usage report CSV from GitHub billing.':
+    'لا يحوي ملف بيانات GitHub هذا تقرير استخدام الذكاء الاصطناعي. اختره مع ملف تقرير الاستخدام (CSV) من صفحة الفوترة في GitHub.',
+  'The usage data comes from the AI usage report in this file: {months}.': 'بيانات الاستخدام مأخوذة من تقرير استخدام الذكاء الاصطناعي في هذا الملف: {months}.',
+  'GitHub had not made the AI usage report for {months} yet. Run the script again in a few minutes to add it.':
+    'لم يكن GitHub قد أعدّ تقرير استخدام الذكاء الاصطناعي عن {months} بعد. شغّل السكربت مرة أخرى بعد بضع دقائق لإضافته.',
+  'The AI usage report in this file was not used, because you chose a usage report CSV too.':
+    'لم يُستخدم تقرير استخدام الذكاء الاصطناعي في هذا الملف، لأنك اخترت ملف تقرير استخدام (CSV) أيضًا.',
   'Some organizations did not give their seat list, so the list may be short.': 'لم تُرجع بعض المؤسسات قائمة تراخيصها، لذا قد تكون القائمة ناقصة.',
   '{name}: {problem}': '{name}: {problem}',
   '{name}: GitHub data file, {records}.': '{name}: ملف بيانات GitHub، {records}.',
@@ -139,11 +144,48 @@ const arabic: Dict = {
 
   // GitHub data file card (Data page)
   'Mac or Linux': 'Mac أو Linux',
+  'Get the GitHub CLI': 'ثبّت GitHub CLI',
+  'Install it and sign in with {command}. The script asks for any other access it needs.': 'ثبّته وسجّل الدخول بالأمر {command}. يطلب السكربت أي صلاحية أخرى يحتاجها.',
+  'Make the command': 'جهّز الأمر',
+  'Your computer': 'جهازك',
+  Collect: 'اجمع من',
+  'Enterprise name in its GitHub address': 'اسم حساب Enterprise كما في عنوانه على GitHub',
+  'Organization names': 'أسماء المؤسسات',
+  Months: 'الأشهر',
+  'Counting this month, 1 to 24.': 'مع الشهر الحالي، من ١ إلى ٢٤.',
+  'GitHub host': 'خادم GitHub',
+  'Leave it empty for GitHub.com. With data residency, type your host, for example octocorp.ghe.com.':
+    'اتركه فارغًا لموقع GitHub.com. ومع إقامة البيانات، اكتب اسم خادمك، مثل octocorp.ghe.com.',
+  'Activity of every day': 'نشاط كل يوم',
+  'Makes older months exact. It takes longer and the file is larger.': 'يجعل الأشهر الأقدم دقيقة. يستغرق وقتًا أطول ويكون الملف أكبر.',
+  'Team members': 'أعضاء الفرق',
+  'Adds the teams of each user. It sends one request per team.': 'يضيف فرق كل مستخدم. يرسل طلبًا واحدًا لكل فريق.',
+  'Without a name, the script asks for it when it starts.': 'إن لم تكتب اسمًا، يطلبه السكربت عند بدئه.',
+  'The command gets the script from GitHub and runs it, so there is nothing to download or install.':
+    'يجلب الأمر السكربت من GitHub ويشغّله، فلا حاجة إلى تنزيل شيء أو تثبيته.',
+  'Read the script on GitHub': 'اقرأ السكربت على GitHub',
+  'Run it and load the file': 'شغّله وحمّل الملف',
+  'Open a terminal, paste the command and press Enter. The script shows its plan and asks before it starts. It only reads from GitHub.':
+    'افتح الطرفية، والصق الأمر واضغط Enter. يعرض السكربت خطته ويسألك قبل أن يبدأ. وهو يقرأ من GitHub فقط.',
+  'Open PowerShell or Command Prompt, paste the command and press Enter. The script shows its plan and asks before it starts. It only reads from GitHub.':
+    'افتح PowerShell أو موجه الأوامر، والصق الأمر واضغط Enter. يعرض السكربت خطته ويسألك قبل أن يبدأ. وهو يقرأ من GitHub فقط.',
+  'When it says the file is saved, drop the file here. It has the AI usage report too, so it is the only file you need. You need to be an enterprise owner or billing manager.':
+    'حين يذكر أنه حفظ الملف، أفلت الملف هنا. فهو يحوي تقرير استخدام الذكاء الاصطناعي أيضًا، فلا تحتاج إلى ملف آخر. يلزم أن تكون مالك حساب Enterprise أو مدير فوترة فيه.',
+  'When it says the file is saved, drop it here together with the usage report CSV from GitHub billing. GitHub makes the AI usage report file only for enterprises. You need to be an organization owner or billing manager.':
+    'حين يذكر أنه حفظ الملف، أفلته هنا مع ملف تقرير الاستخدام (CSV) من صفحة الفوترة في GitHub. لا يُعدّ GitHub ملف تقرير استخدام الذكاء الاصطناعي إلا لحسابات Enterprise. يلزم أن تكون مالك المؤسسة أو مدير فوترة فيها.',
+  'Left out: {names}. A name has only letters, digits, dots, dashes and underscores.': 'لم يُضف: {names}. يتكون الاسم من حروف وأرقام ونقاط وشرطات وشرطات سفلية فقط.',
+  'Only the first enterprise is used. Run the script once for each enterprise.': 'يُستخدم أول حساب Enterprise فقط. شغّل السكربت مرة لكل حساب Enterprise.',
+  'Left out: the host. Type only the host name, for example octocorp.ghe.com.': 'لم يُضف الخادم. اكتب اسم الخادم فقط، مثل octocorp.ghe.com.',
+  'Your computer cannot run scripts from the internet?': 'لا يسمح جهازك بتشغيل سكربتات من الإنترنت؟',
+  'Download the scripts and unpack the ZIP file. Open a terminal in the unpacked folder and run this command instead.':
+    'نزّل السكربتات وفُك ضغط ملف ZIP. ثم افتح الطرفية في المجلد الذي فككت ضغطه وشغّل هذا الأمر بدلًا من الأمر السابق.',
+  'Download the scripts (ZIP)': 'تنزيل السكربتات (ZIP)',
+  'Copy the command for the downloaded scripts': 'نسخ أمر السكربتات المنزّلة',
   Windows: 'Windows',
-  'The collector script reads budgets, seats, members, billing, activity and seat changes from GitHub and saves them in one file. Load that file here with your usage report to make the numbers more exact and to get more findings. The script only reads and needs the GitHub CLI.':
-    'يقرأ سكربت جمع البيانات الميزانيات والتراخيص والأعضاء والفوترة والنشاط وتغييرات التراخيص من GitHub ويحفظها في ملف واحد. حمّل هذا الملف هنا مع تقرير الاستخدام لتصبح الأرقام أدق ولتحصل على نتائج أكثر. السكربت يقرأ فقط ويحتاج إلى GitHub CLI.',
-  'Run it in a copy of this repository. The file holds GitHub logins and activity, so keep it safe and delete it when you are done.':
-    'شغّله في نسخة من هذا المستودع. يحتوي الملف على أسماء مستخدمي GitHub ونشاطهم، لذا احفظه في مكان آمن واحذفه عندما تنتهي.',
+  'The collector script reads budgets, seats, members, billing, activity and seat changes from GitHub and saves them in one file. For an enterprise it adds the AI usage report too. Load that file here to make the numbers more exact and to get more findings.':
+    'يقرأ سكربت جمع البيانات الميزانيات والتراخيص والأعضاء والفوترة والنشاط وتغييرات التراخيص من GitHub ويحفظها في ملف واحد. ولحساب Enterprise يضيف تقرير استخدام الذكاء الاصطناعي أيضًا. حمّل هذا الملف هنا لتصبح الأرقام أدق ولتحصل على نتائج أكثر.',
+  'The file holds GitHub logins and activity, so keep it safe and delete it when you are done.':
+    'يحتوي الملف على أسماء مستخدمي GitHub ونشاطهم، لذا احفظه في مكان آمن واحذفه عندما تنتهي.',
   'How to run the collector script': 'كيف تشغّل سكربت جمع البيانات',
   '{target}, {month}': '{target}، {month}',
   'Part of the data': 'جزء البيانات',

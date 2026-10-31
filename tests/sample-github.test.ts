@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { budgetOverview, deriveGitHub } from '../src/lib/collection';
+import { budgetMap, budgetOverview, deriveGitHub, userTarget } from '../src/lib/collection';
 import { DEMO_SHORTCODE } from '../src/lib/demo/generate';
 import { sampleCollection, sampleCollectionDay, sampleGitHubLines } from '../src/lib/demo/github';
 import { loadDemo, pipelineOf } from './helpers';
@@ -50,6 +50,21 @@ describe('the made-up GitHub data of the sample report', async () => {
     expect(overview.unbudgeted?.some((scope) => scope.name === 'northwind-data')).toBe(true);
     expect(overview.changes.length).toBeGreaterThan(0);
     expect(github.usersAtLimit.length).toBeGreaterThan(0);
+  });
+
+  it('shows every kind of limit for users, so the budget map and the target of a user have something to show', () => {
+    const map = budgetMap(collection, store);
+    expect(map.top.limits.length).toBeGreaterThan(0);
+    expect(map.held.own).toBe(2);
+    expect(map.held['cost-center']).toBeGreaterThan(5);
+    expect(map.held.everyone).toBeGreaterThan(20);
+    expect(map.held.none).toBe(0);
+    expect(map.rooms.filter((room) => room.perUser !== null).map((room) => room.name)).toEqual(['Mobile Studio', 'Applied AI Research']);
+    expect(map.rooms.some((room) => room.poolCapped)).toBe(true);
+    expect(map.roomsWithoutLimit).toBeGreaterThan(0);
+    const kinds = new Set(budgetOverview(collection, store).users.map((user) => user.kind));
+    expect([...kinds].sort()).toEqual(['cost-center', 'everyone', 'own']);
+    for (const own of map.own) expect(userTarget(collection, store, own.login)?.limit.kind).toBe('own');
   });
 
   it('gives the analysis a monthly budget from GitHub', () => {

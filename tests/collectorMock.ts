@@ -2,6 +2,7 @@ import { createServer as createProxyServer, type IncomingMessage, type ServerRes
 import { createServer as createSecureServer } from 'node:https';
 import type { AddressInfo, Socket } from 'node:net';
 import { gzipSync } from 'node:zlib';
+import { makeCsv } from './helpers';
 
 /**
  * A pretend GitHub for the collector script tests. It is an HTTP proxy: gh and curl connect through it to the
@@ -32,6 +33,8 @@ export interface MockSettings {
 
 export interface MockGitHub {
   proxyUrl: string;
+  /** The two months of the AI usage reports, oldest first. GitHub keeps a finished report for the older one. */
+  usageMonths: [string, string];
   requests: RecordedRequest[];
   /** Change these between runs. */
   settings: MockSettings;
@@ -131,6 +134,30 @@ function userDay(login: string, day: string) {
   };
 }
 
+/** The AI usage report files. The first has Windows line ends and a cost center name with every character to escape. */
+function usageReportFiles(olderMonth: string, newerMonth: string): Record<string, string | Buffer> {
+  const older = makeCsv([
+    { date: `${olderMonth}-03`, user: 'KofiIto_nwind', gross: 1.25, costCenter: 'Team "North", \\ desk\tA' },
+    { date: `${olderMonth}-04`, user: 'MeiChen_nwind', gross: 0.5, model: 'Auto: GPT-5.6 Terra' },
+  ]);
+  const newer = makeCsv(
+    Array.from({ length: 1500 }, (_unused, index) => ({ date: `${newerMonth}-01`, user: `Person${index}_nwind`, gross: (index + 1) / 100 })),
+    { bom: false },
+  );
+  return {
+    'ai-usage-old-1.csv': older.replace(/\n/g, '\r\n'),
+    'ai-usage-old-2.csv.gz': gzipSync(makeCsv([{ date: `${olderMonth}-05`, user: 'SaraLind_nwind', gross: 2 }], { bom: false })),
+    'ai-usage-new.csv': newer,
+  };
+}
+
+function usageReport(id: string, start: string, end: string, status: string, type = 'ai_credit', links: string[] = []) {
+  return {
+    id, report_type: type, start_date: `${start}T00:00:00Z`, end_date: `${end}T00:00:00Z`, status, created_at: `${start}T08:00:00Z`,
+    actor: { login: 'lens-admin', name: 'Private Admin Name' }, download_urls: links.map((link) => `${DOWNLOADS}/${link}`),
+  };
+}
+
 const ndjson = (lines: unknown[]): string => lines.map((line) => JSON.stringify(line)).join('\r\n') + '\r\n';
 
 function auditEvent(action: string, user: string, extra: Record<string, unknown> = {}) {
@@ -149,6 +176,24 @@ export async function startMockGitHub(certificate: string, privateKey: string): 
   const reportLastDay = today.subtract({ days: 1 }).toString();
   const reportFirstDay = today.subtract({ days: 28 }).toString();
   const oldestDailyDay = today.subtract({ days: 33 }).toString();
+  const newerMonth = today.toPlainYearMonth();
+  const olderMonth = newerMonth.subtract({ months: 1 });
+  const usageMonths: [string, string] = [olderMonth.toString(), newerMonth.toString()];
+  const olderStart = olderMonth.toPlainDate({ day: 1 }).toString();
+  const olderEnd = olderMonth.toPlainDate({ day: olderMonth.daysInMonth }).toString();
+  const newerStart = newerMonth.toPlainDate({ day: 1 }).toString();
+  const yesterday = today.subtract({ days: 1 }).toString();
+  const usageFiles = usageReportFiles(usageMonths[0], usageMonths[1]);
+  const reportsPath = '/enterprises/octocorp/settings/billing/reports';
+  // Only report-old fits: the others are still being made, of another type, failed, too old or for two months.
+  const usageReports = [
+    usageReport('report-old-processing', olderStart, olderEnd, 'processing'),
+    usageReport('report-old', olderStart, olderEnd, 'completed', 'ai_credit', ['signed/ai-usage-old-1.csv', 'ai-usage-old-2.csv.gz']),
+    usageReport('report-detailed', newerStart, today.toString(), 'completed', 'detailed'),
+    usageReport('report-failed', newerStart, today.toString(), 'failed'),
+    usageReport('report-yesterday', newerStart, yesterday, 'completed'),
+    usageReport('report-wide', olderStart, newerStart, 'completed'),
+  ];
 
   const report = (link: string, extra: Record<string, unknown> = {}): Reply =>
     json({ download_links: [`${DOWNLOADS}/${link}`], report_start_day: reportFirstDay, report_end_day: reportLastDay, ...extra });
@@ -177,6 +222,8 @@ export async function startMockGitHub(certificate: string, privateKey: string): 
       if (file === 'user-teams.ndjson') {
         return { status: 200, body: ndjson([{ user_id: 13, user_login: 'KofiIto_nwind', day: reportLastDay, team_id: 1, slug: 'platform' }, { user_id: 13, user_login: 'MeiChen_nwind', day: reportLastDay, team_id: 1, slug: 'platform' }]) };
       }
+      const usageFile = usageFiles[file];
+      if (usageFile !== undefined) return { status: 200, body: usageFile, headers: { 'content-type': 'text/csv' } };
       const daily = /^users-1-day-(\d{4}-\d{2}-\d{2})\.ndjson$/.exec(file);
       if (daily) return { status: 200, body: ndjson([userDay('MeiChen_nwind', daily[1])]) };
       return failure(404, 'Not Found');
@@ -209,6 +256,18 @@ export async function startMockGitHub(certificate: string, privateKey: string): 
     if (!path.startsWith('/api/v3/')) return failure(404, 'Not Found');
     const route = path.slice('/api/v3'.length);
     const page = Number(query.get('page') ?? '1');
+
+    if (route === reportsPath) {
+      if (request.method === 'POST') return { status: 202, body: usageReport('report-new', newerStart, today.toString(), 'processing') };
+      return json({ usage_report_exports: usageReports });
+    }
+    if (route === `${reportsPath}/report-old`) return json(usageReports[1]);
+    if (route === `${reportsPath}/report-new`) {
+      // GitHub is still making it the first time the script looks.
+      return seen === 1
+        ? json(usageReport('report-new', newerStart, today.toString(), 'processing'))
+        : json(usageReport('report-new', newerStart, today.toString(), 'completed', 'ai_credit', ['ai-usage-new.csv']));
+    }
 
     switch (route) {
       case '/user':
@@ -353,6 +412,7 @@ export async function startMockGitHub(certificate: string, privateKey: string): 
 
   return {
     proxyUrl: `http://127.0.0.1:${port}`,
+    usageMonths,
     requests,
     settings,
     reset: () => {

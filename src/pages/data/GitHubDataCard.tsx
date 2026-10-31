@@ -1,41 +1,26 @@
 import { ExternalLink } from 'lucide-react';
 import { useMemo } from 'react';
 import { Badge, CalcInfo, Callout, Card, DataTable, DocLinks, type Column } from '../../components/ui';
-import { msg, t, tp } from '../../i18n';
+import { t, tp } from '../../i18n';
 import type { Collection, CollectionSource, GitHubData, MonthCheck } from '../../lib/collection';
 import { APP_COLLECTOR_URL } from '../../lib/links';
 import { fmtInt, fmtUSD } from '../../lib/utils/format';
 import { useAnalysis } from '../../state/analysis';
 import { useApp } from '../../state/store';
 import { collectedDay, monthCheckStatus, monthName, scopeText, sourceName, sourceStatus } from '../githubText';
-
-const COMMANDS = [
-  { system: msg('Mac or Linux'), command: 'bash scripts/collect.sh' },
-  { system: msg('Windows'), command: 'powershell -ExecutionPolicy Bypass -File scripts\\collect.ps1' },
-];
+import { CollectorCommand } from './CollectorCommand';
 
 /** How to make a GitHub data file with the collector scripts. */
 export function HowToCollect() {
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       <p className="text-sm text-fg-muted">
         {t(
-          'The collector script reads budgets, seats, members, billing, activity and seat changes from GitHub and saves them in one file. Load that file here with your usage report to make the numbers more exact and to get more findings. The script only reads and needs the GitHub CLI.',
+          'The collector script reads budgets, seats, members, billing, activity and seat changes from GitHub and saves them in one file. For an enterprise it adds the AI usage report too. Load that file here to make the numbers more exact and to get more findings.',
         )}
       </p>
-      <dl className="grid gap-2 sm:grid-cols-2">
-        {COMMANDS.map((entry) => (
-          <div key={entry.command} className="min-w-0">
-            <dt className="text-xs text-fg-muted">{t(entry.system)}</dt>
-            <dd className="mt-0.5">
-              <code dir="ltr" className="block overflow-x-auto whitespace-nowrap rounded-sm border border-border bg-surface-2 px-2 py-1 text-xs">
-                {entry.command}
-              </code>
-            </dd>
-          </div>
-        ))}
-      </dl>
-      <p className="text-xs text-fg-subtle">{t('Run it in a copy of this repository. The file holds GitHub logins and activity, so keep it safe and delete it when you are done.')}</p>
+      <CollectorCommand />
+      <p className="text-xs text-fg-subtle">{t('The file holds GitHub logins and activity, so keep it safe and delete it when you are done.')}</p>
       <a href={APP_COLLECTOR_URL} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs text-accent hover:underline">
         {t('How to run the collector script')}
         <ExternalLink size={12} aria-hidden />

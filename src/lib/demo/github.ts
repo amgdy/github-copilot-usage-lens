@@ -25,8 +25,12 @@ const IDLE_ORGS = ['northwind-platform', 'northwind-apps', 'northwind-data', 'no
 /** The budget for each organization as a share of what it was billed this month: one used up, one near the limit, one with room. */
 const ORG_BUDGET_SHARES: Record<string, number> = { 'northwind-labs': 1.04, 'northwind-apps': 0.86, 'northwind-platform': 0.55 };
 const CENTER_BUDGET_SHARES: Record<string, number> = { 'Mobile Studio': 0.9, 'Developer Experience': 0.4, 'Applied AI Research': 0.7 };
-/** The per-user budget of the shared budget for all users, in USD. */
+/** The limit for each user of the enterprise, in USD. */
 const USER_LIMIT = 30;
+/** Limits for each user of a cost center, in USD: one lower and one higher than the limit for each user. */
+const CENTER_USER_LIMITS: Record<string, number> = { 'Mobile Studio': 20, 'Applied AI Research': 60 };
+/** The cost center that may use only its own share of the included credits. */
+const POOL_CAPPED_CENTER = 'Mobile Studio';
 
 /** A small hash of a text, so the made-up details stay the same on every run. */
 function hashOf(value: string): number {
@@ -50,6 +54,8 @@ interface SampleUser {
   lastDay: number;
   /** Billed in the month of collection, in USD. */
   billedThisMonth: number;
+  /** Usage in the month of collection, in USD. Limits for users count this, included credits too. */
+  usedThisMonth: number;
   /** Days with usage in the report. */
   days: Set<number>;
   credits: Map<number, number>;
@@ -64,7 +70,7 @@ function usersOf(store: DataStore, monthStart: number, collectedDay: number): Ma
     if (!login) continue;
     let user = users.get(login);
     if (user === undefined) {
-      user = { login, org: '', costCenter: '', plan: 'business', firstDay: store.day[i], lastDay: store.day[i], billedThisMonth: 0, days: new Set(), credits: new Map() };
+      user = { login, org: '', costCenter: '', plan: 'business', firstDay: store.day[i], lastDay: store.day[i], billedThisMonth: 0, usedThisMonth: 0, days: new Set(), credits: new Map() };
       users.set(login, user);
     }
     const org = store.dicts.org.values[store.org[i]];
@@ -77,7 +83,10 @@ function usersOf(store: DataStore, monthStart: number, collectedDay: number): Ma
     user.lastDay = Math.max(user.lastDay, store.day[i]);
     user.days.add(store.day[i]);
     user.credits.set(store.day[i], (user.credits.get(store.day[i]) ?? 0) + store.qty[i]);
-    if (store.day[i] >= monthStart) user.billedThisMonth += store.net[i];
+    if (store.day[i] >= monthStart) {
+      user.billedThisMonth += store.net[i];
+      user.usedThisMonth += store.gross[i];
+    }
   }
   for (const [login, counts] of orgCounts) users.get(login)!.org = [...counts].sort((a, b) => b[1] - a[1])[0][0];
   return users;
@@ -230,24 +239,54 @@ export function sampleGitHubLines(store: DataStore, collectedOn: string): string
     budget_alerting: { will_alert: true, alert_recipients: ['billing-admins'] },
   });
   budgetIds.push('sample-copilot');
-  // A shared budget that gives each user the same limit, and budgets of their own for the two heaviest users.
-  const ranked = [...users.values()].sort((a, b) => b.billedThisMonth - a.billedThisMonth || a.login.localeCompare(b.login));
+  // Limits for users count all usage, included credits too: a limit for each user, limits for each user of two
+  // cost centers, and budgets of their own for the two heaviest users. The most specific limit replaces the others.
+  const ranked = [...users.values()].sort((a, b) => b.usedThisMonth - a.usedThisMonth || a.login.localeCompare(b.login));
   const heaviest = ranked.slice(0, 2);
   for (const [index, user] of heaviest.entries()) {
-    const amount = index === 0 ? roundDown(user.billedThisMonth) : roundUp(user.billedThisMonth / 0.82);
-    budget(`sample-user-${user.login}`, 'user', user.login, amount, index === 0 ? Math.max(amount, user.billedThisMonth) : user.billedThisMonth, true, { user: user.login });
+    const amount = index === 0 ? roundDown(user.usedThisMonth) : roundUp(user.usedThisMonth / 0.82);
+    budget(`sample-user-${user.login}`, 'user', user.login, amount, index === 0 ? Math.max(amount, user.usedThisMonth) : user.usedThisMonth, true, { user: user.login });
   }
+  const centerLimitId = (center: string) => `sample-center-users-${center}`;
+  for (const [center, limit] of Object.entries(CENTER_USER_LIMITS)) budget(centerLimitId(center), 'multi_user_cost_center', center, limit, 0, true, { consumed_amount: null });
   budget('sample-each-user', 'multi_user_customer', DEMO_ENTERPRISE, USER_LIMIT, 0, true, { consumed_amount: null });
   for (const user of ranked) {
     if (user.lastDay < monthStart) continue;
     const ownBudget = heaviest.includes(user) ? `sample-user-${user.login}` : null;
+    const centerLimit = CENTER_USER_LIMITS[user.costCenter];
+    if (centerLimit !== undefined) {
+      record(
+        'budget-user',
+        { user: user.login, consumed_amount: cents(Math.min(centerLimit, user.usedThisMonth)), target_amount: centerLimit, override_budget_id: ownBudget },
+        { parent: centerLimitId(user.costCenter) },
+      );
+    }
     record(
       'budget-user',
-      { user: user.login, consumed_amount: cents(Math.min(USER_LIMIT, user.billedThisMonth)), target_amount: USER_LIMIT, override_budget_id: ownBudget },
+      {
+        user: user.login,
+        consumed_amount: cents(Math.min(USER_LIMIT, user.usedThisMonth)),
+        target_amount: USER_LIMIT,
+        override_budget_id: ownBudget ?? (centerLimit !== undefined ? centerLimitId(user.costCenter) : null),
+      },
       { parent: 'sample-each-user' },
     );
   }
   source('budgets', budgetIds.length);
+
+  // Cost centers and the users in them.
+  const centers = new Map<string, string[]>();
+  for (const user of users.values()) if (user.costCenter) centers.set(user.costCenter, [...(centers.get(user.costCenter) ?? []), user.login]);
+  for (const [center, logins] of [...centers].sort((a, b) => a[0].localeCompare(b[0]))) {
+    record('cost-center', {
+      id: `sample-cc-${center.toLowerCase().replaceAll(' ', '-')}`,
+      name: center,
+      state: 'active',
+      ai_credit_pool_enabled: center === POOL_CAPPED_CENTER,
+      resources: logins.map((login) => ({ type: 'User', name: login })),
+    });
+  }
+  source('cost-centers', centers.size);
 
   // Billing for each month: the AI credits of the report and the seat charges.
   for (const billingMonth of months) {

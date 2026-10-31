@@ -125,7 +125,6 @@ const arabic: Dict = {
   'Delete saved settings': 'احذف الإعدادات المحفوظة',
   'Delete all saved settings and start again? A loaded report is closed too.': 'أتحذف كل الإعدادات المحفوظة وتبدأ من جديد؟ سيُغلق التقرير المحمّل أيضًا.',
   'Yes, delete': 'نعم، احذف',
-  'Reset or delete saved settings': 'أعد ضبط الإعدادات المحفوظة أو احذفها',
   Apply: 'تطبيق',
   Reset: 'إعادة الضبط',
   All: 'الكل',

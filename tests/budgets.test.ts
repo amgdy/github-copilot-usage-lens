@@ -82,7 +82,7 @@ describe('budget pace', () => {
 });
 
 describe('budget users', () => {
-  it('keeps one line per login with the fullest budget, fullest first', () => {
+  it('keeps one line per login, held to the most specific limit, fullest first', () => {
     const collection = collectionOf(
       [
         budget('group', { budget_scope: 'multi_user_customer', budget_entity_name: '' }),

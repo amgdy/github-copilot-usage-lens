@@ -55,3 +55,10 @@ export const budgetRecord = (id: string, extra: Line): Line => ({
   id, budget_type: 'SkuPricing', budget_scope: 'enterprise', budget_entity_name: 'octocorp', budget_amount: 500, prevent_further_usage: true,
   budget_product_sku: 'ai_credits', consumed_amount: 100, budget_alerting: { will_alert: true, recipients: 1 }, ...extra,
 });
+
+/** One part of an AI usage report file, as the collector scripts write it: up to 1000 lines of the CSV file. */
+export const usageReportPart = (month: string, file: number, part: number, lines: string[], report = 'report-1'): Line =>
+  recordLine('usage-report', { report, file, part, lines }, { month });
+
+/** The text of a Blob as it is stored. Blob.text() would drop a byte order mark at the start. */
+export const storedText = async (blob: Blob): Promise<string> => new TextDecoder('utf-8', { ignoreBOM: true }).decode(await blob.arrayBuffer());

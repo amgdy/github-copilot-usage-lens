@@ -12,10 +12,12 @@ import {
   type Collection,
   type CollectionHeader,
   type CollectionSource,
+  type CostCenter,
   type GitHubBudget,
   type MetricsSummary,
   type SeatSummary,
   type SourceStatus,
+  type UsageReportFile,
 } from './types';
 
 /** List sizes the reader keeps at most. A larger file is read in part and marked as capped. */
@@ -24,10 +26,15 @@ export const COLLECTION_LIMITS = {
   members: 500_000,
   budgets: 10_000,
   budgetUsers: 250_000,
+  costCenters: 10_000,
+  /** Users, organizations, teams and repositories of all cost centers together. */
+  costCenterResources: 500_000,
   metricsUsers: 250_000,
   audit: 100_000,
   sources: 5_000,
   teams: 50_000,
+  /** CSV files of the AI usage report, of all months together. */
+  usageReportFiles: 1_000,
 } as const;
 
 /** A file that is not a collector file, or one this app cannot read. The message is for the person who loaded it. */
@@ -181,6 +188,19 @@ function addBilling(list: BillingMonth[], index: Map<string, BillingMonth>, mont
   line.quantity += money(item[quantityKey] ?? item.quantity);
 }
 
+/** One CSV file of an AI usage report while its parts are read. */
+interface UsageReportParts {
+  scope: string;
+  target: string;
+  month: string;
+  report: string;
+  file: number;
+  parts: Map<number, Blob>;
+  lines: number;
+  /** A part was damaged or came twice, so the file cannot be put back together. */
+  broken: boolean;
+}
+
 /**
  * Reads the lines of a collector file one at a time and keeps what the app uses. Pass every line to `push`, call
  * `skipLine` for a line that was too long to read, then `finish`. The first line has to be the header: `push` throws a
@@ -199,11 +219,12 @@ export class CollectionReader {
   private readonly seatTotals: { target: string; total: number }[] = [];
   private readonly seatSummaries: SeatSummary[] = [];
   private readonly members = new Set<string>();
-  private readonly teams: Record<string, string> = {};
+  private readonly teams = new Map<string, string>();
   private readonly userTeams = new Map<string, Set<string>>();
   private readonly budgets: GitHubBudget[] = [];
   private readonly budgetUsers: BudgetUserState[] = [];
-  private costCenters = 0;
+  private readonly costCenters: CostCenter[] = [];
+  private costCenterResources = 0;
   private readonly aiCredits: BillingMonth[] = [];
   private readonly aiCreditIndex = new Map<string, BillingMonth>();
   private readonly summaryCredits: BillingMonth[] = [];
@@ -214,6 +235,7 @@ export class CollectionReader {
   private readonly metricsDays = new Set<number>();
   private metricsStart: string | undefined;
   private readonly audit: AuditEvent[] = [];
+  private readonly usageReportParts = new Map<string, UsageReportParts>();
 
   /** True once the header line was read. */
   get started(): boolean {
@@ -284,7 +306,9 @@ export class CollectionReader {
       }
       case 'team': {
         const slug = text(record.slug, 200);
-        if (slug !== undefined && Object.keys(this.teams).length < COLLECTION_LIMITS.teams) this.teams[slug] = text(record.name, 200) ?? slug;
+        if (slug !== undefined && (this.teams.has(slug) || this.teams.size < COLLECTION_LIMITS.teams)) {
+          this.teams.set(slug, text(record.name, 200) ?? slug);
+        }
         return true;
       }
       case 'team-member':
@@ -312,7 +336,7 @@ export class CollectionReader {
         return true;
       }
       case 'cost-center':
-        this.costCenters++;
+        this.addCostCenter(record);
         return true;
       case 'ai-credit-usage':
         if (month) addBilling(this.aiCredits, this.aiCreditIndex, month, target, record, 'grossQuantity');
@@ -344,6 +368,9 @@ export class CollectionReader {
         this.audit.push(event);
         return true;
       }
+      case 'usage-report':
+        if (month) this.addUsageReportPart(record, text(line.scope, 40) ?? '', target, month);
+        return true;
       default:
         // Kinds this version does not use, such as billing-usage and scope-metrics, are counted but not kept.
         return true;
@@ -378,6 +405,82 @@ export class CollectionReader {
     this.sources.push(source);
     this.sourceIndex.set(key, source);
     return true;
+  }
+
+  private addCostCenter(record: Dict): void {
+    const name = text(record.name, 255);
+    if (name === undefined || /^deleted$/i.test(text(record.state, 40) ?? '')) return;
+    if (this.costCenters.length >= COLLECTION_LIMITS.costCenters) {
+      this.capped = true;
+      return;
+    }
+    const costCenter: CostCenter = { id: text(record.id, 200) ?? name, name, users: [], organizations: [], teams: [], repositories: [], poolCapped: record.ai_credit_pool_enabled === true };
+    for (const resource of Array.isArray(record.resources) ? record.resources : []) {
+      if (!isDict(resource)) continue;
+      const resourceName = text(resource.name, 200);
+      const list = resourceName === undefined ? undefined : resourceList(costCenter, text(resource.type, 60) ?? '');
+      if (list === undefined || resourceName === undefined) continue;
+      if (this.costCenterResources >= COLLECTION_LIMITS.costCenterResources) {
+        this.capped = true;
+        break;
+      }
+      list.push(resourceName);
+      this.costCenterResources++;
+    }
+    this.costCenters.push(costCenter);
+  }
+
+  /** Keeps one part of an AI usage report file. Each part holds up to 1000 lines of the CSV file, in order. */
+  private addUsageReportPart(record: Dict, scope: string, target: string, month: string): void {
+    const report = text(record.report, 100);
+    const file = countOf(record.file);
+    if (report === undefined || file === null || file < 1) return;
+    const key = `${scope}|${target}|${month}|${report}|${file}`;
+    let entry = this.usageReportParts.get(key);
+    if (entry === undefined) {
+      if (this.usageReportParts.size >= COLLECTION_LIMITS.usageReportFiles) {
+        this.capped = true;
+        return;
+      }
+      entry = { scope, target, month, report, file, parts: new Map(), lines: 0, broken: false };
+      this.usageReportParts.set(key, entry);
+    }
+    const part = countOf(record.part);
+    const lines = record.lines;
+    if (part === null || part < 1 || entry.parts.has(part) || !Array.isArray(lines) || lines.length === 0 || !lines.every((line) => typeof line === 'string')) {
+      entry.broken = true;
+      return;
+    }
+    // A Blob keeps the text out of the JavaScript heap until the usage report is read.
+    entry.parts.set(part, new Blob([`${lines.join('\n')}\n`], { type: 'text/csv' }));
+    entry.lines += lines.length;
+  }
+
+  /**
+   * The AI usage report files of every month that the script saved in full: its source line says ok, every part of
+   * every file is there, and the rows add up to the rows the script counted.
+   */
+  private usageReports(): UsageReportFile[] {
+    const months = new Map<string, UsageReportParts[]>();
+    for (const entry of this.usageReportParts.values()) {
+      const key = `${entry.scope}|${entry.target}|${entry.month}`;
+      months.set(key, [...(months.get(key) ?? []), entry]);
+    }
+    const out: UsageReportFile[] = [];
+    for (const [key, files] of months) {
+      const source = this.sourceIndex.get(`usage-report|${key}`);
+      const reports = new Set(files.map((entry) => entry.report));
+      const rows = files.reduce((total, entry) => total + entry.lines - 1, 0);
+      const whole = (entry: UsageReportParts) => !entry.broken && [...entry.parts.keys()].every((part) => part <= entry.parts.size);
+      if (source?.status !== 'ok' || reports.size !== 1 || rows !== source.records || !files.every(whole)) continue;
+      files.sort((a, b) => a.file - b.file);
+      for (const entry of files) {
+        const parts = [...entry.parts.entries()].sort((a, b) => a[0] - b[0]).map(([, blob]) => blob);
+        const name = files.length === 1 ? `ai-usage-report-${entry.month}.csv` : `ai-usage-report-${entry.month}-${entry.file}.csv`;
+        out.push({ month: entry.month, name, data: new Blob(parts, { type: 'text/csv' }), lines: entry.lines });
+      }
+    }
+    return out.sort((a, b) => (a.month < b.month ? -1 : a.month > b.month ? 1 : 0));
   }
 
   private addTeam(login: string | undefined, slug: string | undefined): void {
@@ -464,7 +567,7 @@ export class CollectionReader {
       seatTotals: this.seatTotals,
       seatSummaries: this.seatSummaries,
       members: [...this.members],
-      teams: this.teams,
+      teams: Object.fromEntries(this.teams),
       userTeams,
       budgets: this.budgets,
       budgetUsers: this.budgetUsers,
@@ -474,9 +577,20 @@ export class CollectionReader {
       seatCharges: this.seatCharges,
       metrics: this.metricsSummary(),
       audit: this.audit,
+      usageReports: this.usageReports(),
       capped: this.capped,
     };
   }
+}
+
+/** The list of a cost center that a resource type goes in: User, Org, Repo or an enterprise team. */
+function resourceList(costCenter: CostCenter, type: string): string[] | undefined {
+  const kind = type.toLowerCase();
+  if (kind === 'user') return costCenter.users;
+  if (kind.startsWith('org')) return costCenter.organizations;
+  if (kind.startsWith('repo')) return costCenter.repositories;
+  if (kind.includes('team')) return costCenter.teams;
+  return undefined;
 }
 
 function readSeatSummary(record: Dict, target: string): SeatSummary {
