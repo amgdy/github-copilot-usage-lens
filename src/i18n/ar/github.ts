@@ -186,6 +186,21 @@ const arabic: Dict = {
     'نزّل السكربتات وفُك ضغط ملف ZIP. ثم افتح الطرفية في المجلد الذي فككت ضغطه وشغّل هذا الأمر بدلًا من الأمر السابق.',
   'Download the scripts (ZIP)': 'تنزيل السكربتات (ZIP)',
   'Copy the command for the downloaded scripts': 'نسخ أمر السكربتات المنزّلة',
+  'Does your network allow only some addresses?': 'هل تسمح شبكتك ببعض العناوين فقط؟',
+  'Ask your network team to allow HTTPS (port {port}) to these addresses before you run the command.':
+    'اطلب من فريق الشبكة السماح باتصال HTTPS (المنفذ {port}) بهذه العناوين قبل أن تشغّل الأمر.',
+  'A * stands for any part of the name.': 'تعني العلامة * أي جزء من الاسم.',
+  'Gets the script for the command above': 'يجلب السكربت للأمر السابق',
+  'Sign in with gh auth login': 'تسجيل الدخول بالأمر gh auth login',
+  'The GitHub API': 'واجهة GitHub البرمجية',
+  'Sign in and the GitHub API': 'تسجيل الدخول وواجهة GitHub البرمجية',
+  'Activity report files': 'ملفات تقارير النشاط',
+  'Activity report files, backup route': 'ملفات تقارير النشاط، مسار بديل',
+  'AI usage report files': 'ملفات تقرير استخدام الذكاء الاصطناعي',
+  'When the script starts, before it asks anything, it checks that the GitHub API and the report addresses answer. GitHub can send report files from other addresses. If the network blocks one, the script names it in its summary.':
+    'عندما يبدأ السكربت، وقبل أن يسأل أي سؤال، يتحقق من أن واجهة GitHub البرمجية وعناوين التقارير تجيب. وقد يرسل GitHub ملفات التقارير من عناوين أخرى. إن حجبت الشبكة أحدها، يذكره السكربت في ملخصه.',
+  'Windows also checks each certificate with its issuer over HTTP (port {port}). If the network blocks that check, the script downloads the file again without it.':
+    'يتحقق Windows أيضًا من كل شهادة لدى الجهة التي أصدرتها عبر HTTP (المنفذ {port}). إن حجبت الشبكة هذا التحقق، ينزّل السكربت الملف مرة أخرى من دونه.',
   Windows: 'Windows',
   'The collector script reads budgets, seats, members, billing, activity and seat changes from GitHub and saves them in one file. For an enterprise it adds the AI usage report too. Load that file here to make the numbers more exact and to get more findings.':
     'يقرأ سكربت جمع البيانات الميزانيات والتراخيص والأعضاء والفوترة والنشاط وتغييرات التراخيص من GitHub ويحفظها في ملف واحد. ولحساب Enterprise يضيف تقرير استخدام الذكاء الاصطناعي أيضًا. حمّل هذا الملف هنا لتصبح الأرقام أدق ولتحصل على نتائج أكثر.',

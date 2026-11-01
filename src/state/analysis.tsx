@@ -21,7 +21,7 @@ export interface AnalysisContextValue {
   settings: Settings;
   taxonomy: Taxonomy;
   analysis: Analysis;
-  /** What the GitHub data file adds. Null when none is loaded, and always for the sample report. */
+  /** What the GitHub data file adds. Null when none is loaded. The sample report has made-up GitHub data of its own. */
   github: GitHubData | null;
   /** True while the filters or settings were just changed and the analysis is catching up. */
   pending: boolean;

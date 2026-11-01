@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Armchair, BookOpen, Download, FileText, Lightbulb, Printer, SlidersHorizontal } from 'lucide-react';
+import { Armchair, BookOpen, Download, FileText, Lightbulb, MessageSquareText, Printer, SlidersHorizontal } from 'lucide-react';
 import { NoRows } from '../components/NoRows';
 import { PageHeader } from '../components/ui';
 import { msg, t } from '../i18n';
@@ -21,6 +21,7 @@ import { panelId, TabBar, tabId, type TabItem } from './recommendations/TabBar';
 import { DEFAULT_REC_FILTERS, type RecFilters } from './recommendations/recFilters';
 import { DEFAULT_SEAT_FLAGS, type SeatFlags } from './recommendations/scenario';
 import { PriceSource } from './models/parts';
+import { AskCopilotDialog } from './recommendations/AskCopilotDialog';
 
 type TabKey = 'recommendations' | 'simulator' | 'seats' | 'playbook';
 
@@ -35,6 +36,7 @@ export default function RecommendationsPage() {
   const [recFilters, setRecFilters] = useState<RecFilters>(DEFAULT_REC_FILTERS);
   const [levers, setLevers] = useState<LeverParams>(DEFAULT_LEVERS);
   const [seatFlags, setSeatFlags] = useState<SeatFlags>(DEFAULT_SEAT_FLAGS);
+  const [copilotOpen, setCopilotOpen] = useState(false);
   const { range, agg: aggregates, seats, users } = analysis;
 
   if (aggregates.totals.rows === 0) {
@@ -78,6 +80,9 @@ export default function RecommendationsPage() {
         description={`${t(DESCRIPTION)} ${t('{from} to {to}', { from: fmtDay(range.start, true), to: fmtDay(range.end, true) })} · ${pluralize(range.length, 'day')} · ${pluralize(aggregates.totals.users, 'user')}`}
         actions={
           <div className="contents print:hidden">
+            <button type="button" className="btn" onClick={() => setCopilotOpen(true)}>
+              <MessageSquareText size={14} aria-hidden /> {t('Ask GitHub Copilot')}
+            </button>
             <CopyButton label={t('Copy summary')} getText={summary} />
             <button type="button" className="btn" onClick={downloadSummary} title={t('Headline, key figures, segments and recommendations as Markdown')}>
               <FileText size={14} aria-hidden /> {t('Download summary (.md)')}
@@ -99,6 +104,7 @@ export default function RecommendationsPage() {
       />
 
       <PriceSource settings className="-mt-2 mb-4" />
+      <AskCopilotDialog open={copilotOpen} onClose={() => setCopilotOpen(false)} />
       <TabBar tabs={tabs} value={tab} onChange={setTab} idPrefix={PREFIX} label={t('Recommendations sections')} />
 
       <div role="tabpanel" id={panelId(PREFIX)} aria-labelledby={tabId(PREFIX, active.id)}>

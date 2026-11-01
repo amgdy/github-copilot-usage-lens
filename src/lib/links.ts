@@ -177,6 +177,7 @@ export const LINKS = {
   budgetsApi: { label: 'REST API endpoints for budgets', url: 'https://docs.github.com/en/rest/billing/budgets', source: 'GitHub Docs' },
   teamMembersApi: { label: 'REST API endpoints for team members', url: 'https://docs.github.com/en/rest/teams/members', source: 'GitHub Docs' },
   githubCli: { label: 'GitHub CLI quickstart', url: 'https://docs.github.com/en/github-cli/github-cli/quickstart', source: 'GitHub Docs' },
+  copilotAllowlist: { label: 'GitHub Copilot allowlist reference', url: 'https://docs.github.com/en/copilot/reference/copilot-allowlist-reference', source: 'GitHub Docs' },
   auditLogs: {
     label: 'Reviewing audit logs for GitHub Copilot',
     url: 'https://docs.github.com/en/copilot/how-tos/administer-copilot/manage-for-enterprise/review-audit-logs',

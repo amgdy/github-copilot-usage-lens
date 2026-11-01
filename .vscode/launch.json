@@ -1,0 +1,130 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "App: start and debug in Chrome",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "npm run dev",
+      "cwd": "${workspaceFolder}",
+      // Without colors the address in the "Local:" line of Vite stays plain, so the browser opens at the right port.
+      "env": { "NO_COLOR": "1" },
+      "serverReadyAction": {
+        "pattern": "Local:\\s+(https?://\\S+)",
+        "uriFormat": "%s",
+        "action": "debugWithChrome",
+        "webRoot": "${workspaceFolder}",
+        "killOnServerStop": true
+      },
+      "presentation": { "group": "1-app", "order": 1 }
+    },
+    {
+      "name": "App: start and debug in Edge",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "npm run dev",
+      "cwd": "${workspaceFolder}",
+      "env": { "NO_COLOR": "1" },
+      "serverReadyAction": {
+        "pattern": "Local:\\s+(https?://\\S+)",
+        "uriFormat": "%s",
+        "action": "debugWithEdge",
+        "webRoot": "${workspaceFolder}",
+        "killOnServerStop": true
+      },
+      "presentation": { "group": "1-app", "order": 2 }
+    },
+    {
+      "name": "App: debug in Chrome, server already running",
+      "type": "chrome",
+      "request": "launch",
+      "url": "http://localhost:5173",
+      "webRoot": "${workspaceFolder}",
+      "presentation": { "group": "1-app", "order": 3 }
+    },
+    {
+      "name": "App: debug in Edge, server already running",
+      "type": "msedge",
+      "request": "launch",
+      "url": "http://localhost:5173",
+      "webRoot": "${workspaceFolder}",
+      "presentation": { "group": "1-app", "order": 4 }
+    },
+    {
+      "name": "Tests: all",
+      "type": "node",
+      "request": "launch",
+      "program": "${workspaceFolder}/node_modules/vitest/vitest.mjs",
+      "args": ["run"],
+      "cwd": "${workspaceFolder}",
+      "autoAttachChildProcesses": true,
+      "smartStep": true,
+      "console": "integratedTerminal",
+      "skipFiles": ["<node_internals>/**", "${workspaceFolder}/node_modules/**"],
+      "presentation": { "group": "2-tests", "order": 1 }
+    },
+    {
+      "name": "Tests: current file",
+      "type": "node",
+      "request": "launch",
+      "program": "${workspaceFolder}/node_modules/vitest/vitest.mjs",
+      "args": ["run", "${relativeFile}"],
+      "cwd": "${workspaceFolder}",
+      "autoAttachChildProcesses": true,
+      "smartStep": true,
+      "console": "integratedTerminal",
+      "skipFiles": ["<node_internals>/**", "${workspaceFolder}/node_modules/**"],
+      "presentation": { "group": "2-tests", "order": 2 }
+    },
+    {
+      "name": "Tests: one test in current file",
+      "type": "node",
+      "request": "launch",
+      "program": "${workspaceFolder}/node_modules/vitest/vitest.mjs",
+      "args": ["run", "${relativeFile}", "--testNamePattern", "${input:testName}"],
+      "cwd": "${workspaceFolder}",
+      "autoAttachChildProcesses": true,
+      "smartStep": true,
+      "console": "integratedTerminal",
+      "skipFiles": ["<node_internals>/**", "${workspaceFolder}/node_modules/**"],
+      "presentation": { "group": "2-tests", "order": 3 }
+    },
+    {
+      "name": "Script: check prices",
+      "type": "node",
+      "request": "launch",
+      "program": "${workspaceFolder}/scripts/check-prices.ts",
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "skipFiles": ["<node_internals>/**"],
+      "presentation": { "group": "3-scripts", "order": 1 }
+    },
+    {
+      "name": "Script: current file",
+      "type": "node",
+      "request": "launch",
+      "program": "${file}",
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "skipFiles": ["<node_internals>/**"],
+      "presentation": { "group": "3-scripts", "order": 2 }
+    },
+    {
+      "name": "Script: make demo data",
+      "type": "node",
+      "request": "launch",
+      "program": "${workspaceFolder}/scripts/generate-demo.ts",
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "skipFiles": ["<node_internals>/**"],
+      "presentation": { "group": "3-scripts", "order": 3 }
+    }
+  ],
+  "inputs": [
+    {
+      "id": "testName",
+      "type": "promptString",
+      "description": "Part of the test name to run"
+    }
+  ]
+}

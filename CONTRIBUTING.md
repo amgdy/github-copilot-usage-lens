@@ -26,6 +26,16 @@ npm run dev
 
 The app opens at http://localhost:5173.
 
+### Run and debug in VS Code
+
+Open the Run and Debug view and pick a setup from `.vscode/launch.json`:
+
+- **App: start and debug in Chrome** or **in Edge** starts the development server and opens the app in that browser with the debugger on. The **server already running** setups only open the browser at http://localhost:5173.
+- **Tests: current file** runs the test file that is open. **Tests: one test in current file** asks for part of a test name. **Tests: all** runs every test.
+- **Script: make demo data**, **Script: check prices** and **Script: current file** run the scripts in `scripts/` with Node.
+
+Breakpoints work in the TypeScript files, in the browser and in Node.
+
 ## Before you open a pull request
 
 All three checks must pass:

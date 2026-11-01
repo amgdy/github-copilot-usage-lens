@@ -11,6 +11,8 @@ import { makeCsv } from './helpers';
  */
 
 export const MOCK_HOST = 'github.test';
+/** A download host that the pretend network blocks: the proxy refuses to connect to it, as to every host but MOCK_HOST. */
+export const BLOCKED_HOST = 'reports.blocked.test';
 export const MOCK_TOKEN = 'made-up-token';
 export const MOCK_SCOPES = 'manage_billing:copilot, manage_billing:enterprise, read:audit_log, read:enterprise, read:org';
 
@@ -31,6 +33,8 @@ export interface MockSettings {
   rejectApiVersion: boolean;
   /** The AI usage reports GitHub makes when asked have no usage, so GitHub gives no file for them. */
   emptyReports: boolean;
+  /** The links of the 28-day activity reports point to BLOCKED_HOST. */
+  blockDownloads: boolean;
 }
 
 export interface MockGitHub {
@@ -189,7 +193,7 @@ function auditEvent(action: string, user: string, extra: Record<string, unknown>
 
 export async function startMockGitHub(certificate: string, privateKey: string): Promise<MockGitHub> {
   const requests: RecordedRequest[] = [];
-  const settings: MockSettings = { rejectApiVersion: false, emptyReports: false };
+  const settings: MockSettings = { rejectApiVersion: false, emptyReports: false, blockDownloads: false };
   const counts = new Map<string, number>();
   const today = Temporal.Now.plainDateISO('UTC');
   const reportLastDay = today.subtract({ days: 1 }).toString();
@@ -225,8 +229,10 @@ export async function startMockGitHub(certificate: string, privateKey: string): 
   ];
   const oldReport = usageReports[2];
 
-  const report = (link: string, extra: Record<string, unknown> = {}): Reply =>
-    json({ download_links: [`${DOWNLOADS}/${link}`], report_start_day: reportFirstDay, report_end_day: reportLastDay, ...extra });
+  const report = (link: string, extra: Record<string, unknown> = {}): Reply => {
+    const downloads = settings.blockDownloads ? `https://${BLOCKED_HOST}/downloads` : DOWNLOADS;
+    return json({ download_links: [`${downloads}/${link}`], report_start_day: reportFirstDay, report_end_day: reportLastDay, ...extra });
+  };
 
   function answer(request: RecordedRequest): Reply {
     const path = request.path;
@@ -466,6 +472,7 @@ export async function startMockGitHub(certificate: string, privateKey: string): 
       madeReports.clear();
       settings.rejectApiVersion = false;
       settings.emptyReports = false;
+      settings.blockDownloads = false;
     },
     reportFirstDay,
     reportLastDay,

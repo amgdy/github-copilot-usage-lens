@@ -178,6 +178,11 @@ $script:DownloadPath = ''
 $script:SpinnerFrames = '|/-\'
 $script:DownloadError = ''
 $script:HttpClient = $null
+# Set by Save-Download (see there).
+$script:RevokeBestEffort = $false
+$script:DownloadUnreachable = $false
+$script:UnreachableHosts = New-Object 'System.Collections.Generic.List[string]'
+$script:RevocationHosts = New-Object 'System.Collections.Generic.List[string]'
 $script:FoundEnterprises = @()
 $script:FoundOrganizations = @()
 
@@ -343,7 +348,8 @@ To run it straight from GitHub, with no download, put the options before the las
   powershell -ExecutionPolicy Bypass -Command "& ([scriptblock]::Create((irm https://raw.githubusercontent.com/amgdy/github-copilot-usage-lens/main/scripts/collect.ps1))) [options]"
 
 -ExecutionPolicy Bypass lets Windows run this one script. It changes no settings.
-With no options, the script asks what to collect.
+With no options, the script asks what to collect. Before it asks anything, it checks that this computer can reach the
+network addresses it needs.
 
 Options:
   -Enterprise SLUG   Collect an enterprise. You must be an enterprise owner or billing manager.
@@ -358,7 +364,7 @@ Options:
   -Plain             Save plain NDJSON text (.ndjson) instead of a compressed file.
   -Skip LIST         Sources to leave out, separated by commas. See -ListSources.
   -Only LIST         Collect only these sources, separated by commas.
-  -ListSources       Show every source and the access it needs, then stop.
+  -ListSources       Show every source, the access it needs and the network addresses, then stop.
   -Yes               Ask nothing. Use the options as given.
   -Help              Show this help.
   -Version           Show the version of this script.
@@ -405,6 +411,53 @@ function Show-Sources {
   Write-Line 'Otherwise it asks GitHub to make one, which takes a few minutes and adds the report to the billing page. For the month'
   Write-Line 'the script runs in, it asks for a new one unless GitHub is still making one. GitHub makes one report at a time, so the'
   Write-Line 'script asks for the next month when the one before is ready. It changes no settings.'
+  Write-Line ''
+  Write-Line ('Network: the script uses HTTPS (port 443) to these addresses for ' + $script:GitHubHost + '. If your network allows only some')
+  Write-Line 'addresses, ask your network team to allow them before you run the script. -Hostname shows them for another host.'
+  Write-Addresses '  ' $true
+  Write-Line 'GitHub can send report files from other addresses too. When the network blocks one, the summary lists it.'
+}
+
+# The address of the GitHub API, for example api.github.com. GitHub Enterprise Server has it on its own host.
+function Get-ApiHost {
+  if ($script:GitHubHost -eq 'github.com' -or $script:GitHubHost.EndsWith('.ghe.com', [StringComparison]::Ordinal)) {
+    return ('api.' + $script:GitHubHost)
+  }
+  return $script:GitHubHost
+}
+
+# The addresses the script uses and what each one is for, from the GitHub Copilot allowlist reference in the GitHub
+# Docs. With ALL it gives them for every source, else only for the sources of this run.
+function Get-Addresses {
+  param([bool]$All)
+  $list = New-Object 'System.Collections.Generic.List[object]'
+  $onGhe = $script:GitHubHost.EndsWith('.ghe.com', [StringComparison]::Ordinal)
+  $reports = $All -or (Test-WantsAny @('user-metrics', 'scope-metrics', 'user-teams'))
+  $usageReport = $All -or ([bool]$script:EnterpriseSlug -and (Test-Wants 'usage-report'))
+  $list.Add([pscustomobject]@{ Address = (Get-ApiHost); Purpose = 'the GitHub API' })
+  if ($reports -and $script:GitHubHost -eq 'github.com') {
+    $list.Add([pscustomobject]@{ Address = 'copilot-reports.github.com'; Purpose = 'activity report files' })
+    $list.Add([pscustomobject]@{ Address = 'copilot-reports-*.b01.azurefd.net'; Purpose = 'activity report files, backup route' })
+    $list.Add([pscustomobject]@{ Address = 'usagereports*.blob.core.windows.net'; Purpose = 'activity report files, backup route' })
+  } elseif ($reports -and $onGhe) {
+    $list.Add([pscustomobject]@{ Address = ('*.' + $script:GitHubHost); Purpose = 'activity report files' })
+  }
+  # GitHub Docs do not name this one. It is the storage of the AI usage report download links at the time of writing.
+  if ($usageReport -and $script:GitHubHost -eq 'github.com') {
+    $list.Add([pscustomobject]@{ Address = 'mbproduction.blob.core.windows.net'; Purpose = 'AI usage report files' })
+  }
+  return $list.ToArray()
+}
+
+# Writes the addresses the script uses, one per line after INDENT. ALL is the same as for Get-Addresses.
+function Write-Addresses {
+  param([string]$Indent, [bool]$All)
+  foreach ($entry in @(Get-Addresses $All)) { Write-AddressLine $Indent $entry.Address $entry.Purpose }
+}
+
+function Write-AddressLine {
+  param([string]$Indent, [string]$Address, [string]$Purpose)
+  Write-Line ($Indent + $Address.PadRight(37) + ' ' + $Purpose)
 }
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -908,6 +961,36 @@ function Invoke-Program {
   }
 }
 
+# Adds a host once to a list. UnreachableHosts holds the addresses this computer could not reach, RevocationHosts those
+# whose certificate Windows could not check (see Save-Download).
+function Add-HostOnce {
+  param($List, [string]$Name)
+  if ($Name -and -not $List.Contains($Name)) { $List.Add($Name) }
+}
+
+# The host of a link, for example copilot-reports.github.com.
+function Get-LinkHost {
+  param([string]$Url)
+  $rest = $Url
+  $index = $rest.IndexOf('://', [StringComparison]::Ordinal)
+  if ($index -ge 0) { $rest = $rest.Substring($index + 3) }
+  $rest = ($rest -split '[/?#]', 2)[0]
+  $index = $rest.LastIndexOf('@')
+  if ($index -ge 0) { $rest = $rest.Substring($index + 1) }
+  return $rest
+}
+
+# The host that gh got no answer from. gh says "error connecting to HOST" when it cannot find the name, and
+# 'Get "https://HOST/...": ...' for the other network errors.
+function Get-GhUnreachableHost {
+  foreach ($errorLine in @($script:GhErrorText -split "`n")) {
+    $line = $errorLine.TrimEnd([char]13)
+    if ($line -cmatch '^(gh: )?error connecting to ([^ ]+)') { return $Matches[2] }
+    if ($line -cmatch '^(gh: )?[A-Z][a-z]* "https://([^/"]+)') { return $Matches[2] }
+  }
+  return ''
+}
+
 # Runs "gh api" with the arguments and keeps what it prints in GhLines. Tries again when GitHub is busy.
 # Sets LastHttp (200 when it worked, 0 when unknown) and LastError. Returns $true when it worked.
 function Invoke-GhApi {
@@ -933,16 +1016,20 @@ function Invoke-GhApi {
     if ($message.Length -gt 200) { $message = $message.Substring(0, 200) }
     if (-not $message) { $message = 'gh stopped with exit code ' + $result.ExitCode }
     $script:LastError = $message
-    if ($attempt -ge 3) { return $false }
     $retry = $false
-    if (@(429, 500, 502, 503, 504) -contains $script:LastHttp) {
-      $retry = $true
-    } elseif ($script:LastHttp -eq 403) {
-      $retry = $script:GhErrorText -match 'rate limit'
-    } elseif ($script:LastHttp -eq 0) {
-      $retry = $script:GhErrorText -match 'timeout|timed out|connection reset|unexpected EOF|TLS handshake'
+    if ($attempt -lt 3) {
+      if (@(429, 500, 502, 503, 504) -contains $script:LastHttp) {
+        $retry = $true
+      } elseif ($script:LastHttp -eq 403) {
+        $retry = $script:GhErrorText -match 'rate limit'
+      } elseif ($script:LastHttp -eq 0) {
+        $retry = $script:GhErrorText -match 'timeout|timed out|connection reset|unexpected EOF|TLS handshake'
+      }
     }
-    if (-not $retry) { return $false }
+    if (-not $retry) {
+      if ($script:LastHttp -eq 0) { Add-HostOnce $script:UnreachableHosts (Get-GhUnreachableHost) }
+      return $false
+    }
     $waitSeconds = $attempt * $attempt * $script:RetrySeconds
     if ($script:ShowProgress -and $script:StepActive) {
       $script:ProgressNote = 'busy, waiting ' + $waitSeconds + ' s'
@@ -1036,32 +1123,43 @@ function Invoke-FetchPages {
 function Get-InnerMessage {
   param($Exception)
   while ($null -ne $Exception.InnerException) { $Exception = $Exception.InnerException }
+  # .NET says "The proxy tunnel request to proxy '...' failed with status code '403'." Use the same words as with curl.
+  if ($Exception.Message -match "proxy tunnel request .* status code '([1-9][0-9][0-9])'") {
+    return ('The network proxy refused the connection (HTTP ' + $Matches[1] + ').')
+  }
   return $Exception.Message
+}
+
+# One HttpClient for the downloads and the network check with .NET. It follows no redirects by itself, so only https is
+# used, and it uses the proxy in HTTPS_PROXY as curl does.
+function Get-HttpClient {
+  if ($null -eq $script:HttpClient) {
+    if ($PSVersionTable.PSVersion.Major -lt 6) {
+      Add-Type -AssemblyName System.Net.Http
+      [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor
+        [Net.SecurityProtocolType]::Tls12
+    }
+    $handler = New-Object System.Net.Http.HttpClientHandler
+    $handler.AllowAutoRedirect = $false
+    $proxyText = [string]$env:HTTPS_PROXY
+    if (-not $proxyText) { $proxyText = [string]$env:https_proxy }
+    if ($proxyText) {
+      $handler.Proxy = New-Object System.Net.WebProxy($proxyText)
+      $handler.UseProxy = $true
+    } elseif ($null -ne $handler.GetType().GetProperty('DefaultProxyCredentials')) {
+      $handler.DefaultProxyCredentials = [Net.CredentialCache]::DefaultCredentials
+    }
+    $script:HttpClient = New-Object System.Net.Http.HttpClient($handler)
+    $script:HttpClient.Timeout = [TimeSpan]::FromMinutes(10)
+  }
+  return $script:HttpClient
 }
 
 # Downloads with .NET when curl is not there. Only https links are followed, also after a redirect.
 function Save-DownloadWithDotNet {
   param([string]$Url, [string]$Path)
   try {
-    if ($null -eq $script:HttpClient) {
-      if ($PSVersionTable.PSVersion.Major -lt 6) {
-        Add-Type -AssemblyName System.Net.Http
-        [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor
-          [Net.SecurityProtocolType]::Tls12
-      }
-      $handler = New-Object System.Net.Http.HttpClientHandler
-      $handler.AllowAutoRedirect = $false
-      $proxyText = [string]$env:HTTPS_PROXY
-      if (-not $proxyText) { $proxyText = [string]$env:https_proxy }
-      if ($proxyText) {
-        $handler.Proxy = New-Object System.Net.WebProxy($proxyText)
-        $handler.UseProxy = $true
-      } elseif ($null -ne $handler.GetType().GetProperty('DefaultProxyCredentials')) {
-        $handler.DefaultProxyCredentials = [Net.CredentialCache]::DefaultCredentials
-      }
-      $script:HttpClient = New-Object System.Net.Http.HttpClient($handler)
-      $script:HttpClient.Timeout = [TimeSpan]::FromMinutes(10)
-    }
+    $client = Get-HttpClient
     $address = $Url
     $redirects = 0
     $response = $null
@@ -1070,7 +1168,7 @@ function Save-DownloadWithDotNet {
         $script:DownloadError = 'The report link does not use https.'
         return $false
       }
-      $response = $script:HttpClient.GetAsync($address, [System.Net.Http.HttpCompletionOption]::ResponseHeadersRead).GetAwaiter().GetResult()
+      $response = $client.GetAsync($address, [System.Net.Http.HttpCompletionOption]::ResponseHeadersRead).GetAwaiter().GetResult()
       $statusCode = [int]$response.StatusCode
       if ($statusCode -lt 300 -or $statusCode -ge 400 -or $null -eq $response.Headers.Location) { break }
       $redirects++
@@ -1105,27 +1203,214 @@ function Save-DownloadWithDotNet {
     }
   } catch {
     $script:DownloadError = Get-InnerMessage $_.Exception
+    $script:DownloadUnreachable = Test-NetworkException $_.Exception
     return $false
   }
 }
 
+# True when the error came from the network, not from GitHub or this computer.
+function Test-NetworkException {
+  param($Exception)
+  $networkTypes = @('System.Net.Http.HttpRequestException', 'System.Net.Sockets.SocketException', 'System.Net.WebException',
+    'System.Threading.Tasks.TaskCanceledException', 'System.Security.Authentication.AuthenticationException')
+  while ($null -ne $Exception) {
+    if ($networkTypes -contains $Exception.GetType().FullName) { return $true }
+    $Exception = $Exception.InnerException
+  }
+  return $false
+}
+
+function Invoke-Curl {
+  param([string]$Url, [string]$Path)
+  $arguments = @('--fail', '--silent', '--show-error', '--location', '--proto', '=https', '--proto-redir', '=https',
+    '--retry', '2', '--connect-timeout', '30', '--write-out', '%{http_connect}\n')
+  if ($script:RevokeBestEffort) { $arguments += '--ssl-revoke-best-effort' }
+  $arguments += @('--output', $Path, $Url)
+  return (Invoke-Program $script:CurlPath $arguments)
+}
+
+function Test-RevocationError {
+  param([string]$Text)
+  return ($Text -cmatch 'CRYPT_E_(NO_REVOCATION_CHECK|REVOCATION_OFFLINE)')
+}
+
 # Downloads a report file. Only https links are followed. The links are signed, so no token is sent with them.
+# Sets DownloadUnreachable when no answer came from the server, so the network may block it.
 function Save-Download {
   param([string]$Url, [string]$Path)
   $script:DownloadError = ''
+  $script:DownloadUnreachable = $false
   if (-not $Url.StartsWith('https://', [StringComparison]::Ordinal)) { return $false }
   $script:DownloadPath = $Path
   try {
     if (-not $script:CurlPath) { return (Save-DownloadWithDotNet $Url $Path) }
-    $result = Invoke-Program $script:CurlPath @('--fail', '--silent', '--show-error', '--location', '--proto', '=https',
-      '--proto-redir', '=https', '--retry', '2', '--connect-timeout', '30', '--output', $Path, $Url)
+    $result = Invoke-Curl $Url $Path
+    # curl with Windows security (Schannel) checks if the certificate was revoked. When the network blocks the servers
+    # that answer this (CRL and OCSP), it tries again and goes on when only that check cannot be done.
+    if ($result.ExitCode -ne 0 -and (Test-RevocationError $result.ErrorText)) {
+      Add-HostOnce $script:RevocationHosts (Get-LinkHost $Url)
+      if (-not $script:RevokeBestEffort) {
+        $script:RevokeBestEffort = $true
+        $result = Invoke-Curl $Url $Path
+      }
+    }
+    # curl before 7.70 does not know --ssl-revoke-best-effort and stops with exit code 2. Then .NET downloads the
+    # files, which does not check revocation, as gh does not.
+    if ($script:RevokeBestEffort -and
+      ($result.ExitCode -eq 2 -or ($result.ExitCode -ne 0 -and (Test-RevocationError $result.ErrorText)))) {
+      $script:CurlPath = ''
+      return (Save-DownloadWithDotNet $Url $Path)
+    }
   } finally {
     $script:DownloadPath = ''
     $script:ProgressNote = ''
   }
   if ($result.ExitCode -eq 0) { return $true }
-  $script:DownloadError = @($result.ErrorText -split "`n")[0].TrimEnd([char]13)
+  # A proxy that does not let the script reach the host answers CONNECT with an error, such as 403.
+  $proxyAnswer = ''
+  if ($result.Lines.Count -gt 0) { $proxyAnswer = ([string]$result.Lines[$result.Lines.Count - 1]).Trim() }
+  if ($proxyAnswer -match '^[1-9][0-9][0-9]$' -and -not $proxyAnswer.StartsWith('2', [StringComparison]::Ordinal)) {
+    $script:DownloadUnreachable = $true
+    $script:DownloadError = 'The network proxy refused the connection (HTTP ' + $proxyAnswer + ').'
+    return $false
+  }
+  if (@(5, 6, 7, 28, 35, 52, 55, 56, 60, 97) -contains $result.ExitCode) { $script:DownloadUnreachable = $true }
+  $script:DownloadError = Get-DownloadErrorLine $result.ErrorText
   return $false
+}
+
+# The error of the last download. curl may first warn that it tries again, so its own error line comes first.
+function Get-DownloadErrorLine {
+  param([string]$Text)
+  $lines = @($Text -split "`n" | ForEach-Object { $_.TrimEnd([char]13) })
+  $curlLines = @($lines | Where-Object { $_.StartsWith('curl: (', [StringComparison]::Ordinal) })
+  if ($curlLines.Count -gt 0) { return $curlLines[$curlLines.Count - 1] }
+  return $lines[0]
+}
+
+# Sends one GET to the address with curl, with no token and no redirect. Any HTTP answer, even an error page, makes curl
+# stop with 0.
+function Invoke-CurlProbe {
+  param([string]$Url)
+  $arguments = @('--silent', '--show-error', '--proto', '=https', '--connect-timeout', '10', '--max-time', '15')
+  if ($script:RevokeBestEffort) { $arguments += '--ssl-revoke-best-effort' }
+  $arguments += @('--write-out', '%{http_connect}\n', '--output', [System.IO.Path]::Combine($script:WorkDir, 'probe'), $Url)
+  return (Invoke-Program $script:CurlPath $arguments)
+}
+
+function New-ProbeResult {
+  param([bool]$Answered, [bool]$Revocation, [string]$Reason)
+  return [pscustomobject]@{ Answered = $Answered; Revocation = $Revocation; Reason = $Reason }
+}
+
+# The same check with .NET, when there is no curl or it is too old to go on without the revocation check.
+function Test-AddressWithDotNet {
+  param([string]$Url, [bool]$Revocation)
+  $cancel = $null
+  try {
+    $client = Get-HttpClient
+    $cancel = New-Object System.Threading.CancellationTokenSource([TimeSpan]::FromSeconds(15))
+    $response = $client.GetAsync($Url, [System.Net.Http.HttpCompletionOption]::ResponseHeadersRead,
+      $cancel.Token).GetAwaiter().GetResult()
+    $response.Dispose()
+    return (New-ProbeResult $true $Revocation '')
+  } catch {
+    $reason = Get-InnerMessage $_.Exception
+    if ($null -ne $cancel -and $cancel.IsCancellationRequested) { $reason = 'No answer in 15 seconds.' }
+    return (New-ProbeResult $false $Revocation $reason)
+  } finally {
+    if ($null -ne $cancel) { $cancel.Dispose() }
+  }
+}
+
+# Sends one GET to https://ADDRESS/ and says if it answered.
+function Test-Address {
+  param([string]$Address)
+  $url = 'https://' + $Address + '/'
+  $revocation = $false
+  if (-not $script:CurlPath) { return (Test-AddressWithDotNet $url $revocation) }
+  $result = Invoke-CurlProbe $url
+  # As in Save-Download: when the network blocks the servers that say if a certificate was revoked, try without that
+  # check, and with .NET when curl is too old for it.
+  if ($result.ExitCode -ne 0 -and (Test-RevocationError $result.ErrorText)) {
+    $revocation = $true
+    Add-HostOnce $script:RevocationHosts $Address
+    if (-not $script:RevokeBestEffort) {
+      $script:RevokeBestEffort = $true
+      $result = Invoke-CurlProbe $url
+    }
+  }
+  if ($script:RevokeBestEffort -and
+    ($result.ExitCode -eq 2 -or ($result.ExitCode -ne 0 -and (Test-RevocationError $result.ErrorText)))) {
+    $script:CurlPath = ''
+    return (Test-AddressWithDotNet $url $revocation)
+  }
+  if ($result.ExitCode -eq 0) { return (New-ProbeResult $true $revocation '') }
+  $reason = Get-DownloadErrorLine $result.ErrorText
+  $proxyAnswer = ''
+  if ($result.Lines.Count -gt 0) { $proxyAnswer = ([string]$result.Lines[$result.Lines.Count - 1]).Trim() }
+  if ($proxyAnswer -match '^[1-9][0-9][0-9]$' -and -not $proxyAnswer.StartsWith('2', [StringComparison]::Ordinal)) {
+    $reason = 'The network proxy refused the connection (HTTP ' + $proxyAnswer + ').'
+  }
+  if (-not $reason) { $reason = 'curl stopped with exit code ' + $result.ExitCode + '.' }
+  return (New-ProbeResult $false $revocation $reason)
+}
+
+# Before it asks anything, checks that this computer can reach the addresses the script needs. gh can still work when
+# curl cannot, for example with a company certificate that only the system knows, so a blocked address only stops the
+# script when the admin says so. When the GitHub API does not answer, the sign-in check says what is wrong.
+function Test-Network {
+  $all = -not ($script:EnterpriseSlug -or $script:OrganizationNames.Count -gt 0)
+  $apiHost = Get-ApiHost
+  $blockedCount = 0
+  $apiBlocked = $false
+  $revocationSeen = $false
+  Write-Line ''
+  Write-Line 'Checking the network (HTTPS, port 443)'
+  foreach ($entry in @(Get-Addresses $all)) {
+    Write-Text ('  ' + ([string]$entry.Address).PadRight(37) + ' ')
+    if (([string]$entry.Address).Contains('*')) {
+      Write-Line 'not checked: GitHub picks the full name when it sends a file'
+      continue
+    }
+    $probe = Test-Address $entry.Address
+    if ($probe.Revocation) { $revocationSeen = $true }
+    if ($probe.Answered) {
+      if ($probe.Revocation) { Write-Line 'answers, without the revocation check' } else { Write-Line 'answers' }
+      continue
+    }
+    $blockedCount++
+    if ($entry.Address -ceq $apiHost) { $apiBlocked = $true }
+    Write-Line ('no answer: ' + $probe.Reason)
+  }
+  if ($revocationSeen) {
+    Write-Line '  Windows could not check if the certificates were revoked, because the network blocks the servers that answer'
+    Write-Line '  this (CRL and OCSP). The script goes on without this check.'
+  }
+  if ($blockedCount -eq 0) { return }
+  if ($blockedCount -eq 1) {
+    Write-Line '  1 address did not answer, so the data that needs it may be missing.'
+    Write-Line '  Ask your network team to allow HTTPS (port 443) to it.'
+  } else {
+    Write-Line ('  ' + $blockedCount + ' addresses did not answer, so the data that needs them may be missing.')
+    Write-Line '  Ask your network team to allow HTTPS (port 443) to them.'
+  }
+  Write-Line '  Every address the script uses: https://github.com/amgdy/github-copilot-usage-lens#network-access'
+  if ($script:Interactive -and -not $apiBlocked) {
+    if (-not (Read-YesNo 'Go on anyway?' $true)) {
+      Write-Line 'Stopped. Nothing was saved.'
+      exit 0
+    }
+  }
+}
+
+# Notes a report file that could not be downloaded.
+function Add-DownloadFailure {
+  param([string]$SourceId, [int]$Records, [string]$Url, [string]$Endpoint)
+  $linkName = Get-LinkHost $Url
+  if ($script:DownloadUnreachable) { Add-HostOnce $script:UnreachableHosts $linkName }
+  Add-Status $SourceId 'failed' $Records 0 ('Could not download the report file from ' + $linkName + ': ' +
+    $script:DownloadError) $Endpoint
 }
 
 function Test-GzipFile {
@@ -1241,7 +1526,7 @@ function Invoke-FetchReport {
     [System.IO.File]::Delete($downloadPath)
     [System.IO.File]::Delete($textPath)
     if (-not (Save-Download $link $downloadPath)) {
-      Add-Status $SourceId 'failed' $count 0 ('Could not download the report file: ' + $script:DownloadError) $Endpoint
+      Add-DownloadFailure $SourceId $count $link $Endpoint
       return 'failed'
     }
     if (Test-GzipFile $downloadPath) {
@@ -1702,7 +1987,7 @@ function Save-UsageReport {
       [System.IO.File]::Delete($downloadPath)
       [System.IO.File]::Delete($textPath)
       if (-not (Save-Download $link $downloadPath)) {
-        Add-Status 'usage-report' 'failed' 0 0 ('Could not download the report file: ' + $script:DownloadError) $Endpoint
+        Add-DownloadFailure 'usage-report' 0 $link $Endpoint
         return $false
       }
       if (Test-GzipFile $downloadPath) {
@@ -1967,6 +2252,10 @@ function Test-Login {
       Write-Line ' Sign in, then run this script again:'
       Write-Line ('  gh auth login --hostname ' + $script:GitHubHost)
       exit 1
+    }
+    if ($script:UnreachableHosts.Count -gt 0) {
+      Stop-WithError ('Could not reach ' + $script:GitHubHost + ': ' + $script:LastError + '. If your network blocks ' +
+        $script:UnreachableHosts[0] + ', ask your network team to allow HTTPS (port 443) to it.')
     }
     Stop-WithError ('Could not reach ' + $script:GitHubHost + ': ' + $script:LastError)
   }
@@ -2239,6 +2528,8 @@ function Confirm-Plan {
     Write-Line '  Report:   the AI usage report of each month. GitHub makes it if there is no recent one.'
   }
   Write-Line ('  File:     ' + $script:OutputPath)
+  Write-Line '  Network:  HTTPS (port 443) to these addresses. If your network allows only some addresses, ask to allow them.'
+  Write-Addresses '              ' $false
   if (-not (Read-YesNo 'Start?' $true)) {
     Write-Line 'Stopped. Nothing was saved.'
     exit 0
@@ -2331,6 +2622,25 @@ function Get-Hint {
   return $Message
 }
 
+# Lists the addresses that the network blocked, so the admin can ask to have them allowed.
+function Show-NetworkHelp {
+  if ($script:UnreachableHosts.Count -eq 0 -and $script:RevocationHosts.Count -eq 0) { return }
+  Write-Line ''
+  Write-Line 'Network'
+  if ($script:UnreachableHosts.Count -gt 0) {
+    Write-Line '  This computer could not reach these addresses, so some data is missing:'
+    foreach ($name in $script:UnreachableHosts) { Write-Line ('    ' + $name) }
+    Write-Line '  Ask your network team to allow HTTPS (port 443) to them, then run this script again.'
+  }
+  if ($script:RevocationHosts.Count -gt 0) {
+    Write-Line '  Windows could not check if the certificates of these addresses were revoked, because the network blocks the'
+    Write-Line '  servers that answer this (CRL and OCSP):'
+    foreach ($name in $script:RevocationHosts) { Write-Line ('    ' + $name) }
+    Write-Line '  The script tried again without this check. To keep the check, ask your network team to allow those servers.'
+  }
+  Write-Line '  Every address the script uses: https://github.com/amgdy/github-copilot-usage-lens#network-access'
+}
+
 function Show-Summary {
   param([bool]$Saved)
   Write-Line ''
@@ -2373,6 +2683,7 @@ function Show-Summary {
     }
     Write-Line ('  ' + $sourceId.PadRight(16) + ' ' + $result.PadRight(8) + ' ' + ([string]$records).PadLeft(9) + '  ' + $text)
   }
+  Show-NetworkHelp
   if (-not $Saved) { return }
   Write-Line ''
   Write-Text 'Saved:' 'Green'
@@ -2402,15 +2713,15 @@ function Invoke-Main {
     Show-Help
     exit 0
   }
-  if ($script:ShowSources) {
-    Show-Sources
-    exit 0
-  }
   if ($script:ShowVersion) {
     Write-Line ('collect.ps1 ' + $script:CollectorVersion)
     exit 0
   }
   Assert-Options
+  if ($script:ShowSources) {
+    Show-Sources
+    exit 0
+  }
   $script:Interactive = Test-Interactive
   if (-not $script:Interactive -and -not $script:EnterpriseSlug -and $script:OrganizationNames.Count -eq 0) {
     Stop-WithError 'Choose what to read with -Enterprise SLUG or -Org NAME. Run with -Help to see the options.'
@@ -2432,6 +2743,8 @@ function Invoke-Main {
   Write-Line (' ' + $script:CollectorVersion) 'DarkGray'
   Write-Line 'It changes no settings on GitHub, and the file stays on this computer.' 'DarkGray'
   Test-GitHubCli
+  Select-Sources
+  Test-Network
   Test-Login
   $shownLogin = $script:Login
   if (-not $shownLogin) { $shownLogin = 'unknown' }
