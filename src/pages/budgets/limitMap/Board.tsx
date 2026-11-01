@@ -1,10 +1,10 @@
-import { memo, type KeyboardEvent } from 'react';
+import { Fragment, memo, type KeyboardEvent } from 'react';
 import { cx } from '../../../components/ui';
-import { t } from '../../../i18n';
-import { usedOnDay, type LimitBoard, type LimitFocus, type LimitLane, type LimitTarget, type LimitTop } from '../../../lib/collection';
+import { T, t } from '../../../i18n';
+import { usedOnDay, type BudgetRow, type LimitBoard, type LimitFocus, type LimitLane, type LimitTarget, type LimitTop } from '../../../lib/collection';
 import { fmtInt, fmtPct } from '../../../lib/utils/format';
 import { levelTone } from '../levels';
-import { FRAME_BORDER, Gauge, KIND_ICONS, TILE_FILL, WithIcon, kindLabel, laneEyebrow, laneIcon, laneTitle, levelOfShare, limitName, money, roomText, topIcon, topLabel, usersText, type Highlight } from './parts';
+import { FRAME_BORDER, Gauge, KIND_ICONS, LimitAmount, TILE_FILL, WithIcon, kindLabel, laneEyebrow, laneIcon, laneTitle, levelOfShare, limitName, money, roomText, topIcon, topLabel, usedUpText, usersText, type Highlight, type UserKind } from './parts';
 
 /** Squares drawn per lane before "Show all". */
 export const SQUARES_SHOWN = 120;
@@ -39,13 +39,13 @@ function moveFocus(event: KeyboardEvent<HTMLDivElement>) {
   squares[Math.max(0, Math.min(squares.length - 1, next))]?.focus();
 }
 
-/** "$12.40 of $40.00 · 31% · Stops usage" for the limit a lane or the frame reaches first. */
+/** "$12.40 used · 31% · Stops usage" under the gauge of the limit a lane or the frame reaches first. Its amount is shown in bold above. */
 function LimitLine({ lane }: { lane: Pick<LimitLane, 'gauge'> }) {
   const row = lane.gauge;
   if (row === null) return null;
   return (
     <span className="num flex flex-wrap items-baseline justify-between gap-x-2 text-[11px] text-fg-muted">
-      <span>{row.budget.consumed === null ? `${money(row.budget.amount)} · ${t('Amount used not known')}` : t('{used} of {limit}', { used: money(row.budget.consumed), limit: money(row.budget.amount) })}</span>
+      <span>{row.budget.consumed === null ? t('Amount used not known') : t('{amount} used', { amount: money(row.budget.consumed) })}</span>
       <span>
         {row.share !== null ? `${fmtPct(row.share, 0)} · ` : ''}
         {row.budget.stopsUsage ? t('Stops usage') : t('Alerts only')}
@@ -54,9 +54,45 @@ function LimitLine({ lane }: { lane: Pick<LimitLane, 'gauge'> }) {
   );
 }
 
+/** "Also: AI credits $590, 45%": the budgets that are not shown on the gauge, with their amounts in bold. */
+function OtherBudgets({ rows }: { rows: BudgetRow[] }) {
+  if (rows.length === 0) return null;
+  return (
+    <span className="num block text-[11px] text-fg-subtle">
+      {t('Also')}:{' '}
+      {rows.map((row, index) => (
+        <Fragment key={row.budget.id}>
+          {index > 0 ? ' · ' : ''}
+          {limitName(row)} <LimitAmount amount={row.budget.amount} />
+          {row.share !== null ? `, ${fmtPct(row.share, 0)}` : ''}
+        </Fragment>
+      ))}
+    </span>
+  );
+}
+
+/** "Each person: $30.00 · Universal default", with the amount in bold. */
+function EachPerson({ kind, amount, note }: { kind: UserKind; amount: number; note?: string }) {
+  return (
+    <WithIcon Icon={KIND_ICONS[kind]}>
+      <T text="Each person: {amount}" values={{ amount: <LimitAmount amount={amount} /> }} /> · {kindLabel(kind)}
+      {note ? ` · ${note}` : ''}
+    </WithIcon>
+  );
+}
+
+/** A big figure with a small label over it, for the frame. */
+function Figure({ label, value }: { label: string; value: string }) {
+  return (
+    <span className="block">
+      <span className="eyebrow block text-fg-subtle">{label}</span>
+      <span className="num block font-display text-2xl font-semibold leading-tight">{value}</span>
+    </span>
+  );
+}
+
 function TopHeader({ board, selected, choose }: { board: LimitBoard; selected: boolean; choose: (target: LimitTarget) => void }) {
   const { top } = board;
-  const others = top.limits.filter((row) => row !== top.wall);
   return (
     <button
       type="button"
@@ -76,18 +112,16 @@ function TopHeader({ board, selected, choose }: { board: LimitBoard; selected: b
         ) : (
           <span className="block text-xs text-fg-muted">{top.limits.length > 0 ? t('Only alert budgets are set here. They do not stop usage.') : top.known ? t('No spending limit is set here.') : t('The file has no full budget list, so this limit is not known.')}</span>
         )}
-        {others.length > 0 ? (
-          <span className="num block text-[11px] text-fg-subtle">
-            {t('Also')}: {others.map((row) => `${limitName(row)} ${money(row.budget.amount)}${row.share !== null ? `, ${fmtPct(row.share, 0)}` : ''}`).join(' · ')}
-          </span>
-        ) : null}
+        <OtherBudgets rows={top.limits.filter((row) => row !== top.wall)} />
       </span>
       <span className="block sm:text-end">
-        <span className="eyebrow block text-fg-subtle">{t('Room left')}</span>
-        <span className="num block font-display text-2xl font-semibold leading-tight">{top.wall === null ? (top.limits.length > 0 ? t('Alerts only') : top.known ? t('No limit') : t('Not known')) : roomText(top.room)}</span>
+        <span className="flex flex-wrap gap-x-6 gap-y-1 sm:justify-end">
+          {top.wall !== null ? <Figure label={t('Limit')} value={money(top.wall.budget.amount)} /> : null}
+          <Figure label={t('Room left')} value={top.wall === null ? (top.limits.length > 0 ? t('Alerts only') : top.known ? t('No limit') : t('Not known')) : roomText(top.room)} />
+        </span>
         {board.everyone !== null ? (
-          <span className="num block text-[11px] text-fg-muted">
-            <WithIcon Icon={KIND_ICONS.everyone}>{t('Each person: {amount}', { amount: money(board.everyone.amount) })} · {kindLabel('everyone')}</WithIcon>
+          <span className="block text-[11px] text-fg-muted">
+            <EachPerson kind="everyone" amount={board.everyone.amount} />
           </span>
         ) : null}
       </span>
@@ -127,9 +161,11 @@ function InsideStrip({ top, lanes }: { top: LimitTop; lanes: LimitLane[] }) {
         {wall !== null ? <span className="absolute inset-y-0 w-0.5 bg-fg" style={{ insetInlineStart: `calc(${wall * 100}% - 1px)` }} aria-hidden /> : null}
       </div>
       <p className="num text-[11px] text-fg-muted">
-        {top.insideShare !== null
-          ? t('Limits inside add up to {amount}: {share} of the limit around them.', { amount: money(top.inside), share: fmtPct(top.insideShare, 0) })
-          : t('Limits inside add up to {amount}.', { amount: money(top.inside) })}{' '}
+        {top.insideShare !== null ? (
+          <T text="Limits inside add up to {amount}: {share} of the limit around them." values={{ amount: <LimitAmount amount={top.inside} />, share: fmtPct(top.insideShare, 0) }} />
+        ) : (
+          <T text="Limits inside add up to {amount}." values={{ amount: <LimitAmount amount={top.inside} /> }} />
+        )}{' '}
         {over ? t('They cannot all be used in full. The limit around them is reached first.') : null}
       </p>
     </div>
@@ -166,7 +202,14 @@ function Lane({ board, laneIndex, lane, shares, day, target, focus, highlight, o
     <section data-anchor={`lane-${laneIndex}`} aria-label={title} className={cx('grid gap-x-5 gap-y-2 px-3 py-2.5 md:grid-cols-[15rem_minmax(0,1fr)]', selected && SELECTED_ROW)}>
       <button type="button" aria-pressed={selected} className="block min-h-11 w-full min-w-0 space-y-1 rounded-md text-start hover:bg-surface-2" onClick={() => choose({ kind: 'lane', index: laneIndex })}>
         <span className="eyebrow block text-fg-subtle"><WithIcon Icon={laneIcon(lane, top)}>{laneEyebrow(lane)}</WithIcon></span>
-        <span className="block break-words text-sm font-semibold leading-snug">{title}</span>
+        <span className="flex items-baseline justify-between gap-2">
+          <span className="min-w-0 break-words text-sm font-semibold leading-snug">{title}</span>
+          {own !== null ? (
+            <span className="shrink-0 text-end">
+              <span className="text-[11px] text-fg-muted">{t('Limit')}</span> <LimitAmount amount={own.budget.amount} className="font-display text-base" />
+            </span>
+          ) : null}
+        </span>
         {own !== null ? (
           <>
             <Gauge share={own.share} level={own.level} wall={wall} />
@@ -177,6 +220,7 @@ function Lane({ board, laneIndex, lane, shares, day, target, focus, highlight, o
             {lane.limits.length > 0 ? t('Only alert budgets are set here. They do not stop usage.') : lane.kind === 'unclear' ? t('GitHub picks one seat organization each billing cycle.') : lane.countedByTop ? t('No spending limit of its own') : t('Its spending limit is set in the enterprise and is not in this file.')}
           </span>
         ) : null}
+        {lane.kind !== 'top' ? <OtherBudgets rows={lane.limits.filter((row) => row !== own)} /> : null}
         {lane.kind !== 'unclear' && (lane.countedByTop || own !== null) ? (
           <span className="num block text-[11px] text-fg-muted">
             {own === null ? t('Room left in the limit around it: {amount}', { amount: roomText(lane.room) }) : `${t('Room left')}: ${roomText(lane.room)}`}
@@ -185,17 +229,20 @@ function Lane({ board, laneIndex, lane, shares, day, target, focus, highlight, o
         ) : null}
         {lane.perUser !== null ? (
           <span className="num block text-[11px] text-fg-subtle">
-            <WithIcon Icon={KIND_ICONS[lane.perUser.kind]}>
-              {t('Each person: {amount}', { amount: money(lane.perUser.budget.amount) })} · {kindLabel(lane.perUser.kind)}
-              {lane.poolCapped ? ` · ${t('Own included credits only')}` : ''}
-            </WithIcon>
+            <EachPerson kind={lane.perUser.kind} amount={lane.perUser.budget.amount} note={lane.poolCapped ? t('Own included credits only') : undefined} />
           </span>
         ) : null}
       </button>
       <div className="min-w-0 space-y-1.5">
         <p className="num text-[11px] text-fg-muted">
           {lane.members.length === 0 ? t('No users this month') : usersText(lane.members.length)}
-          {usedUp > 0 ? ` · ${t('{n} reached their user limit', { n: usedUp })}` : ''}
+          {usedUp > 0 ? (
+            <>
+              {' · '}
+              <span className={cx('me-1 inline-block size-2 rounded-[2px] align-baseline', TILE_FILL.bad)} aria-hidden />
+              {usedUpText(usedUp)}
+            </>
+          ) : null}
         </p>
         {members.length > 0 ? (
           <div role="group" aria-label={t('Users of {group}', { group: title })} className="flex flex-wrap gap-2" onKeyDown={moveFocus}>

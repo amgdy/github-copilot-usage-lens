@@ -334,11 +334,56 @@ describe('the limit map', () => {
     expect(sharesOn(board, 1)[zeroIndex]).toBe(1);
     expect(sharesOn(board, 1)[missingIndex]).toBeNaN();
     const laneIndex = board.users[zeroIndex].lane;
-    expect(renderDetails(board, store, { kind: 'lane', index: laneIndex }, 1)).toMatch(/Reached their user limit<\/span><span[^>]*>1<\/span>/);
-    expect(renderDetails(board, store, { kind: 'lane', index: laneIndex }, 2)).toMatch(/Reached their user limit<\/span><span[^>]*>2<\/span>/);
+    expect(renderDetails(board, store, { kind: 'lane', index: laneIndex }, 1)).toMatch(/At 100% of their user limit<\/span><span[^>]*>1 user<\/span>/);
+    expect(renderDetails(board, store, { kind: 'lane', index: laneIndex }, 2)).toMatch(/At 100% of their user limit<\/span><span[^>]*>2 users<\/span>/);
     expect(renderBoard(board)).toContain('border-dashed border-fg-subtle');
-    expect(renderBoard(board)).toContain('2 reached their user limit');
+    // A count of people, worded so it is not read as a share.
+    expect(renderBoard(board)).toContain('2 of them are at 100% of their user limit');
     expect(levelLabel('used-up')).toBe('100% or more');
+  });
+
+  it('shows every limit amount in bold, apart from the amounts used and left', async () => {
+    const store = await storeOf(usageDays('mona', 1, 1, { costCenter: 'Mobile' }));
+    const collection = collectionOf([
+      budget('ent', { budget_amount: 1000, consumed_amount: 100 }),
+      budget('mobile', { budget_scope: 'cost_center', budget_entity_name: 'Mobile', budget_amount: 300, consumed_amount: 30 }),
+      forCostCenter('mobile-each', 'Mobile', 25),
+      everyone(40),
+      costCenter('Mobile'),
+    ]);
+    const board = limitBoard(collection, store, budgetMap(collection, store));
+    const bold = (amount: string) => new RegExp(`font-semibold text-fg[^"]*">${amount.replace('$', '\\$')}<`);
+    const markup = renderBoard(board);
+    // The frame shows its limit as a big figure next to the room left.
+    expect(markup).toMatch(/Limit<\/span><span[^>]*font-display text-2xl font-semibold[^>]*>\$1,000</);
+    expect(markup).toMatch(/Room left<\/span><span[^>]*>\$900</);
+    // A row names its limit next to its title. The line under the gauge says only what was used.
+    expect(markup).toMatch(bold('$300'));
+    expect(markup).toContain('$30.00 used');
+    expect(markup).not.toContain('$30.00 of $300');
+    // The amount for each person is bold too.
+    expect(markup).toMatch(bold('$25.00'));
+    expect(markup).toMatch(bold('$40.00'));
+    expect(markup).toMatch(/Limits inside add up to <span[^>]*font-semibold text-fg[^>]*>\$300</);
+    const laneIndex = board.lanes.findIndex((lane) => lane.name === 'Mobile');
+    const details = renderDetails(board, store, { kind: 'lane', index: laneIndex });
+    expect(details).toMatch(bold('$300'));
+    expect(details).toMatch(bold('$25.00'));
+    const user = renderDetails(board, store, { kind: 'user', index: 0 });
+    expect(user).toMatch(bold('$300'));
+    expect(user).toMatch(bold('$1,000'));
+  });
+
+  it('lists the alert budgets of a row with their amounts in bold', async () => {
+    const store = await storeOf(usageDays('mona', 1, 1, { costCenter: 'Mobile' }));
+    const collection = collectionOf([
+      budget('mobile-alert', { budget_scope: 'cost_center', budget_entity_name: 'Mobile', budget_amount: 80, consumed_amount: 20, prevent_further_usage: false }),
+      costCenter('Mobile'),
+    ]);
+    const board = limitBoard(collection, store, budgetMap(collection, store));
+    const markup = renderBoard(board);
+    expect(markup).toContain('Only alert budgets are set here. They do not stop usage.');
+    expect(markup).toMatch(/Also: .*<span[^>]*font-semibold text-fg[^>]*>\$80\.00<\/span>, 25%/);
   });
 
   it('fades nobody for the whole picture or the frame, and only the members for a lane', async () => {

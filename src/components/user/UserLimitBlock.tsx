@@ -1,5 +1,5 @@
 import { type ReactNode, useMemo } from 'react';
-import { msg, t } from '../../i18n';
+import { T, msg, t } from '../../i18n';
 import { collectionMonth, sourceComplete, userTarget, type UserCostCenter, type UserTarget } from '../../lib/collection';
 import { fmtDay, monthStartDay, parseIsoDay } from '../../lib/utils/date';
 import { fmtInt, fmtPct, fmtUSD } from '../../lib/utils/format';
@@ -140,7 +140,10 @@ export function UserLimitBlock({ login, name }: { login: string; name: string })
       <div className="rounded-lg border border-border-muted bg-surface-2 px-3 py-2">
         <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
           <p className="num font-display text-lg font-semibold">
-            {used === null ? '–' : fmtUSD(used)} <span className="text-sm font-normal text-fg-muted">{t('of {limit}', { limit: fmtUSD(limit.amount) })}</span>
+            {used === null ? '–' : fmtUSD(used)}{' '}
+            <span className="text-sm font-normal text-fg-muted">
+              <T text="of {limit}" values={{ limit: <span className="text-lg font-semibold text-fg">{fmtUSD(limit.amount)}</span> }} />
+            </span>
           </p>
           <span className="num text-xs text-fg-muted">{share === null ? '–' : t('{share} used', { share: fmtPct(share, 0) })}</span>
         </div>

@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useChartColors, type EChartsOption } from '../../components/charts/EChart';
 import { GRID, usdCompact } from '../../components/charts/helpers';
-import { ChartCard, Select } from '../../components/ui';
+import { ChartCard, Select, cx } from '../../components/ui';
 import { msg, t } from '../../i18n';
 import { budgetPace, collectionMonth, PACE_DAYS, type BudgetOverview, type BudgetPace, type Collection } from '../../lib/collection';
 import type { DataStore } from '../../lib/types';
@@ -13,11 +13,11 @@ import { budgetLabel } from './levels';
 const USED = msg('Used so far');
 const PROJECTED = msg('Projected');
 
-function Fact({ label, value }: { label: string; value: string }) {
+function Fact({ label, value, strong = false }: { label: string; value: string; strong?: boolean }) {
   return (
     <div className="min-w-0">
       <dt className="text-xs text-fg-muted">{label}</dt>
-      <dd className="num mt-0.5 text-sm font-medium">{value}</dd>
+      <dd className={cx('num mt-0.5', strong ? 'font-display text-base font-semibold' : 'text-sm font-medium')}>{value}</dd>
     </div>
   );
 }
@@ -121,7 +121,7 @@ export function BudgetPaceCard({ overview, collection, store }: { overview: Budg
           <div className="space-y-2">
             <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">
               <Fact label={t('Used so far')} value={fmtUSD(pace.used)} />
-              <Fact label={t('Budget')} value={fmtUSD(selected.budget.amount)} />
+              <Fact label={t('Budget')} value={fmtUSD(selected.budget.amount)} strong />
               <Fact label={t('Projected for the month')} value={fmtUSD(pace.projected)} />
               <Fact
                 label={t('Runs out')}

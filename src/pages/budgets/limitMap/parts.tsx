@@ -87,6 +87,9 @@ export function laneAbout(lane: LimitLane, top: LimitTop): string {
 export const money = (amount: number): string => fmtUSD(amount, Math.abs(amount) >= 100 ? 0 : 2);
 export const roomText = (room: number | null): string => (room === null ? t('Not known') : room <= 0 ? t('None left') : money(room));
 export const usersText = (count: number): string => tp(count, '1 user', '{n} users', { n: fmtInt(count) });
+/** A count of people, worded so it is not read as a share: "3 of them are at 100% of their user limit". */
+export const usedUpText = (count: number): string =>
+  tp(count, '1 of them is at {share} of their user limit', '{n} of them are at {share} of their user limit', { n: fmtInt(count), share: fmtPct(1, 0) });
 export const levelOfShare = (share: number): BudgetLevel | null => (Number.isFinite(share) ? budgetLevel(share) : null);
 export const limitName = (row: BudgetRow): string => (row.budget.aiCredits ? t('AI credits') : t('All of GitHub Copilot'));
 
@@ -110,6 +113,11 @@ export function Gauge({ share, level, wall, height = 'h-1.5' }: { share: number 
   );
 }
 
+/** A limit amount, bold so it stands out from the amounts used and left around it. */
+export function LimitAmount({ amount, className }: { amount: number; className?: string }) {
+  return <span className={cx('num font-semibold text-fg', className)}>{money(amount)}</span>;
+}
+
 /** One spending limit: what it counts, the amount, how full it is and the room left. */
 export function SpendingLimit({ row }: { row: BudgetRow }) {
   const room = roomOf(row);
@@ -117,7 +125,7 @@ export function SpendingLimit({ row }: { row: BudgetRow }) {
     <div className="min-w-0 space-y-1">
       <div className="flex flex-wrap items-baseline justify-between gap-1 text-xs">
         <span className="text-fg-muted">{limitName(row)}</span>
-        <span className="num font-medium">{fmtUSD(row.budget.amount, 0)}</span>
+        <LimitAmount amount={row.budget.amount} className="font-display text-base" />
       </div>
       <Gauge share={row.share} level={row.level} />
       <div className="flex flex-wrap items-baseline justify-between gap-1 text-[11px] text-fg-subtle">

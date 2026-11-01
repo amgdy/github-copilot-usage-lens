@@ -17,7 +17,7 @@ export function BudgetUsersCard({ overview, collection, store }: { overview: Bud
       { key: 'kind', header: t('Limit type'), value: (row) => limitKindLabel(row.kind) },
       { key: 'budget', header: t('Budget'), value: (row) => budgetNames.get(row.budgetId) ?? '–' },
       { key: 'used', header: t('Used'), align: 'end', value: (row) => row.consumed, render: (row) => fmtUSD(row.consumed) },
-      { key: 'limit', header: t('Limit'), align: 'end', value: (row) => row.limit, render: (row) => fmtUSD(row.limit) },
+      { key: 'limit', header: t('Limit'), align: 'end', value: (row) => row.limit, render: (row) => <span className="font-semibold text-fg">{fmtUSD(row.limit)}</span> },
       {
         key: 'share',
         header: t('Share used'),

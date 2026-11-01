@@ -38,7 +38,7 @@ export function BudgetTable({ github }: { github: GitHubData }) {
         ),
       },
       { key: 'covers', header: t('Covers'), value: (budget) => (budget.aiCredits ? t('AI credits') : t('All of GitHub Copilot')) },
-      { key: 'amount', header: t('Budget'), align: 'end', value: (budget) => budget.amount, render: (budget) => fmtUSD(budget.amount) },
+      { key: 'amount', header: t('Budget'), align: 'end', value: (budget) => budget.amount, render: (budget) => <span className="font-semibold text-fg">{fmtUSD(budget.amount)}</span> },
       { key: 'used', header: t('Used'), align: 'end', value: (budget) => budget.consumed, render: (budget) => usdOrDash(budget.consumed) },
       {
         key: 'share',

@@ -90,8 +90,14 @@ const arabic: Dict = {
   // Limit map
   'No user limit found': 'لم يُعثر على حد للمستخدم',
   'Not found': 'غير موجود',
-  '{n} reached their user limit': 'بلغ {n} حد المستخدم',
-  'Reached their user limit': 'بلغوا حد المستخدم',
+  '{n} of them are at {share} of their user limit': plural(
+    'واحد منهم عند {share} من حد المستخدم',
+    'اثنان منهم عند {share} من حد المستخدم',
+    '{n} منهم عند {share} من حد المستخدم',
+    '{n} منهم عند {share} من حد المستخدم',
+    '{n} منهم عند {share} من حد المستخدم',
+  ),
+  'At {share} of their user limit': 'عند {share} من حد المستخدم',
   'An individual limit replaces cost center and universal user limits. Shared spending controls still apply.': 'يحل الحد الفردي محل حد مركز التكلفة والحد العام للمستخدمين. وتبقى ضوابط الإنفاق المشتركة سارية.',
   'Each person has this amount, not a share of one group budget. Individual limits take priority.': 'لكل شخص هذا المبلغ، وليس حصة من ميزانية مجموعة واحدة. الأولوية للحدود الفردية.',
   'The universal default applies when no individual or cost center user limit takes priority.': 'يسري الحد العام الافتراضي عندما لا يوجد حد فردي أو حد مستخدم لمركز التكلفة له الأولوية.',
@@ -120,6 +126,7 @@ const arabic: Dict = {
   'Enterprise account': 'حساب Enterprise',
   'Amount used not known': 'المبلغ المستخدَم غير معروف',
   '{share} used': 'استُخدم {share}',
+  '{amount} used': 'استُخدم {amount}',
   'Show fewer': 'اعرض أقل',
 
   // AI credit limit of a user, in the user details

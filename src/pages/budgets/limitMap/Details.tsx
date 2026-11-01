@@ -1,15 +1,16 @@
 import { Badge, DocLinks, cx } from '../../../components/ui';
-import { t } from '../../../i18n';
+import { T, t } from '../../../i18n';
 import { budgetLevel, roomOf, usedOnDay, type LimitBoard, type LimitLane, type LimitTarget, type LimitTop } from '../../../lib/collection';
 import type { DataStore } from '../../../lib/types';
 import { fmtInt, fmtPct } from '../../../lib/utils/format';
 import { useApp } from '../../../state/store';
 import { scopeDrill } from '../levels';
-import { Fact, Gauge, Heading, KIND_ABOUT, KIND_ICONS, SpendingLimit, USER_KINDS, WithIcon, kindLabel, laneAbout, laneEyebrow, laneIcon, laneTitle, levelOfShare, limitName, money, roomText, topIcon, topLabel, type UserKind } from './parts';
+import { Fact, Gauge, Heading, KIND_ABOUT, KIND_ICONS, LimitAmount, SpendingLimit, USER_KINDS, WithIcon, kindLabel, laneAbout, laneEyebrow, laneIcon, laneTitle, levelOfShare, limitName, money, roomText, topIcon, topLabel, usersText, type UserKind } from './parts';
 
 const CAVEAT = 'This file cannot confirm the full billing path, enterprise exclusions, or whether paid usage is enabled. Check these in GitHub.';
 
 const kindName = (kind: UserKind) => <WithIcon Icon={KIND_ICONS[kind]}>{kindLabel(kind)}</WithIcon>;
+const eachText = (amount: number) => <T text="{amount} each" values={{ amount: <LimitAmount amount={amount} /> }} />;
 
 const reachedFirstText = (top: LimitTop): string => (top.scope === 'enterprise' ? t('The enterprise limit is reached first.') : t('The organization limit is reached first.'));
 
@@ -82,9 +83,11 @@ export function Details({ board, target, shares, day, store, userIds, choose }: 
               <span className="eyebrow block text-fg-subtle"><WithIcon Icon={laneIcon(lane, top)}>{laneEyebrow(lane)}</WithIcon></span>
               <span className="block break-words text-xs font-semibold">{laneTitle(lane, top)}</span>
               <span className="num block text-[11px] text-fg-muted">
-                {laneRow !== null
-                  ? `${limitName(laneRow)} ${money(laneRow.budget.amount)} · ${t('{amount} left', { amount: roomText(roomOf(laneRow)) })}`
-                  : lane.limits.length > 0
+                {laneRow !== null ? (
+                  <>
+                    {limitName(laneRow)} <LimitAmount amount={laneRow.budget.amount} /> · {t('{amount} left', { amount: roomText(roomOf(laneRow)) })}
+                  </>
+                ) : lane.limits.length > 0
                     ? t('Only alert budgets are set here. They do not stop usage.')
                     : lane.kind === 'unclear'
                     ? t('GitHub picks one seat organization each billing cycle.')
@@ -99,7 +102,11 @@ export function Details({ board, target, shares, day, store, userIds, choose }: 
               <span className="eyebrow block text-fg-subtle"><WithIcon Icon={topIcon(top)}>{topLabel(top)}</WithIcon></span>
               <span className="block break-words text-xs font-semibold">{top.name}</span>
               <span className="num block text-[11px] text-fg-muted">
-                {top.wall !== null ? `${limitName(top.wall)} ${money(top.wall.budget.amount)} · ${t('{amount} left', { amount: roomText(top.room) })}` : top.limits.length > 0 ? t('Only alert budgets are set here. They do not stop usage.') : top.known ? t('No spending limit is set here.') : t('Not known')}
+                {top.wall !== null ? (
+                  <>
+                    {limitName(top.wall)} <LimitAmount amount={top.wall.budget.amount} /> · {t('{amount} left', { amount: roomText(top.room) })}
+                  </>
+                ) : top.limits.length > 0 ? t('Only alert budgets are set here. They do not stop usage.') : top.known ? t('No spending limit is set here.') : t('Not known')}
               </span>
             </button>
           ) : (
@@ -136,9 +143,9 @@ export function Details({ board, target, shares, day, store, userIds, choose }: 
           {lane.kind !== 'unclear' && (lane.countedByTop || lane.limits.length > 0) ? <Fact label={t('Room left')}>{roomText(lane.room)}</Fact> : null}
           {lane.capacity !== null && lane.reachedFirst === 'top' ? <p className="text-[11px] text-fg-muted">{reachedFirstText(top)}</p> : null}
           {lane.seats !== null ? <Fact label={t('Seats')}>{fmtInt(lane.seats)}</Fact> : null}
-          {lane.perUser !== null ? <Fact label={kindName(lane.perUser.kind)}>{t('{amount} each', { amount: money(lane.perUser.budget.amount) })}</Fact> : null}
+          {lane.perUser !== null ? <Fact label={kindName(lane.perUser.kind)}>{eachText(lane.perUser.budget.amount)}</Fact> : null}
           <Fact label={t('Users')}>{fmtInt(lane.members.length)}</Fact>
-          <Fact label={t('Reached their user limit')}>{fmtInt(usedUp)}</Fact>
+          <Fact label={t('At {share} of their user limit', { share: fmtPct(1, 0) })}>{usersText(usedUp)}</Fact>
         </div>
         {lane.poolCapped ? <p className="text-xs text-info">{t('This cost center can draw only its own included credit share. An individual limit does not remove that control.')}</p> : null}
         <ExclusionNote lane={lane} top={top} />
@@ -159,7 +166,7 @@ export function Details({ board, target, shares, day, store, userIds, choose }: 
         {top.limits.length > 0 ? top.limits.map((row) => <SpendingLimit key={row.budget.id} row={row} />) : <p className="text-xs">{top.known ? t('No spending limit is set here.') : t('The file has no full budget list, so this limit is not known.')}</p>}
         <div className="space-y-1">
           {top.wall !== null ? <Fact label={t('Room left')}>{roomText(top.room)}</Fact> : null}
-          {board.everyone !== null ? <Fact label={kindName('everyone')}>{t('{amount} each', { amount: money(board.everyone.amount) })}</Fact> : null}
+          {board.everyone !== null ? <Fact label={kindName('everyone')}>{eachText(board.everyone.amount)}</Fact> : null}
           {top.inside > 0 ? <Fact label={t('Limits inside, added up')}>{top.insideShare !== null ? `${money(top.inside)} · ${fmtPct(top.insideShare, 0)}` : money(top.inside)}</Fact> : null}
           <Fact label={t('Users')}>{fmtInt(board.users.length)}</Fact>
         </div>
