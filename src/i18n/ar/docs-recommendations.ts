@@ -1386,8 +1386,8 @@ const arabic: Dict = {
   'Gap = amount at GitHub − amount in the report, for each full month': 'الفرق = المبلغ في GitHub − المبلغ في التقرير، لكل شهر كامل',
   'The AI credit billing of a month is the AI credit usage report of GitHub billing, or else the AI credit lines of the billing usage summary.':
     'فوترة أرصدة الذكاء الاصطناعي في شهر ما هي تقرير استخدام أرصدة الذكاء الاصطناعي في فوترة GitHub، وإلا فبنود أرصدة الذكاء الاصطناعي في ملخص استخدام الفوترة.',
-  'An organization file is compared with the report rows of its organizations only. An enterprise file is compared with every row.':
-    'يُقارن ملف المؤسسة بصفوف التقرير الخاصة بمؤسساته فقط. ويُقارن ملف Enterprise بكل الصفوف.',
+  'An organization file is compared with the report rows of its organizations only. If none match, it is not compared with every row. An enterprise file is compared with every row.':
+    'يُقارن ملف المؤسسة بصفوف التقرير الخاصة بمؤسساته فقط. وإذا لم تطابق أي مؤسسة، فلا يُقارن بكل الصفوف. ويُقارن ملف Enterprise بكل الصفوف.',
   'Months that were not over when the data was collected, months the report covers only in part and months the report does not cover are left out. A report may miss up to 3 days at the start or end of a month and still count as covering it.':
     'تُستبعد الأشهر التي لم تنتهِ عند جمع البيانات، والأشهر التي يغطيها التقرير جزئيًا فقط، والأشهر التي لا يغطيها التقرير. ويمكن أن تنقص التقرير 3 أيام على الأكثر في بداية الشهر أو نهايته ويُعد مع ذلك مغطيًا له.',
   'Usage is compared first, then the billed amount. Amounts within 2%, or within $1, count as the same.': 'يُقارن الاستخدام أولًا، ثم المبلغ المدفوع إضافيًا. وتُعد المبالغ التي لا يتجاوز فرقها 2%، أو $1، متساوية.',

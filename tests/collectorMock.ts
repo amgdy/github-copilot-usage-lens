@@ -33,14 +33,20 @@ export interface MockSettings {
 
 export interface MockGitHub {
   proxyUrl: string;
-  /** The two months of the AI usage reports, oldest first. GitHub keeps a finished report for the older one. */
+  /**
+   * The two months of the AI usage reports, oldest first. GitHub keeps a finished report for the older one. For any
+   * other month GitHub makes a report when asked, but only one at a time: it answers 409 while it makes another.
+   */
   usageMonths: [string, string];
   requests: RecordedRequest[];
   /** Change these between runs. */
   settings: MockSettings;
   /** Forgets the requests and the settings, so the next run starts like the first. */
   reset: () => void;
-  /** The first day of the latest 28-day activity report. Daily reports exist for the five days before it. */
+  /**
+   * The first day of the latest 28-day activity report. Daily reports of the organization exist for the five days
+   * before it, but the third of them has no data. The team report of the organization has no data on the last day.
+   */
   reportFirstDay: string;
   reportLastDay: string;
   close: () => Promise<void>;
@@ -61,6 +67,8 @@ const failure = (status: number, message: string): Reply => ({
   body: { message, documentation_url: 'https://docs.github.com/rest', status: String(status) },
 });
 const nextLink = (url: string): Record<string, string> => ({ link: `<${url}>; rel="next"` });
+/** What GitHub sends for a usage metrics report on a day without data: an empty JSON text, not a report. */
+const emptyText: Reply = { status: 200, body: '""', headers: { 'content-type': 'application/json; charset=utf-8' } };
 
 function seat(login: string, organization: string, planType: string, team: string | null = null) {
   return {
@@ -176,6 +184,7 @@ export async function startMockGitHub(certificate: string, privateKey: string): 
   const reportLastDay = today.subtract({ days: 1 }).toString();
   const reportFirstDay = today.subtract({ days: 28 }).toString();
   const oldestDailyDay = today.subtract({ days: 33 }).toString();
+  const emptyDailyDay = today.subtract({ days: 31 }).toString();
   const newerMonth = today.toPlainYearMonth();
   const olderMonth = newerMonth.subtract({ months: 1 });
   const usageMonths: [string, string] = [olderMonth.toString(), newerMonth.toString()];
@@ -185,6 +194,9 @@ export async function startMockGitHub(certificate: string, privateKey: string): 
   const yesterday = today.subtract({ days: 1 }).toString();
   const usageFiles = usageReportFiles(usageMonths[0], usageMonths[1]);
   const reportsPath = '/enterprises/octocorp/settings/billing/reports';
+  // The reports the script asked for, by id. GitHub is still making one until the script has looked at it once.
+  const madeReports = new Map<string, { start: string; end: string; link: string }>();
+  const stillMaking = () => [...madeReports.keys()].some((id) => (counts.get(`/api/v3${reportsPath}/${id}`) ?? 0) < 2);
   // Only report-old fits: the others are still being made, of another type, failed, too old or for two months.
   const usageReports = [
     usageReport('report-old-processing', olderStart, olderEnd, 'processing'),
@@ -224,6 +236,8 @@ export async function startMockGitHub(certificate: string, privateKey: string): 
       }
       const usageFile = usageFiles[file];
       if (usageFile !== undefined) return { status: 200, body: usageFile, headers: { 'content-type': 'text/csv' } };
+      const madeFile = /^ai-usage-(\d{4}-\d{2})\.csv$/.exec(file);
+      if (madeFile) return { status: 200, body: makeCsv([{ date: `${madeFile[1]}-02`, user: 'KofiIto_nwind', gross: 0.75 }]), headers: { 'content-type': 'text/csv' } };
       const daily = /^users-1-day-(\d{4}-\d{2}-\d{2})\.ndjson$/.exec(file);
       if (daily) return { status: 200, body: ndjson([userDay('MeiChen_nwind', daily[1])]) };
       return failure(404, 'Not Found');
@@ -258,15 +272,25 @@ export async function startMockGitHub(certificate: string, privateKey: string): 
     const page = Number(query.get('page') ?? '1');
 
     if (route === reportsPath) {
-      if (request.method === 'POST') return { status: 202, body: usageReport('report-new', newerStart, today.toString(), 'processing') };
+      if (request.method === 'POST') {
+        if (stillMaking()) return failure(409, 'A usage report export is already in progress');
+        const asked = JSON.parse(request.body) as { start_date: string; end_date: string };
+        const month = asked.start_date.slice(0, 7);
+        const id = asked.start_date === newerStart ? 'report-new' : `report-${month}`;
+        const link = id === 'report-new' ? 'ai-usage-new.csv' : `ai-usage-${month}.csv`;
+        madeReports.set(id, { start: asked.start_date, end: asked.end_date, link });
+        return { status: 202, body: usageReport(id, asked.start_date, asked.end_date, 'processing') };
+      }
       return json({ usage_report_exports: usageReports });
     }
     if (route === `${reportsPath}/report-old`) return json(usageReports[1]);
-    if (route === `${reportsPath}/report-new`) {
+    const madeId = route.startsWith(`${reportsPath}/`) ? route.slice(reportsPath.length + 1) : '';
+    const made = madeReports.get(madeId);
+    if (made) {
       // GitHub is still making it the first time the script looks.
       return seen === 1
-        ? json(usageReport('report-new', newerStart, today.toString(), 'processing'))
-        : json(usageReport('report-new', newerStart, today.toString(), 'completed', 'ai_credit', ['ai-usage-new.csv']));
+        ? json(usageReport(madeId, made.start, made.end, 'processing'))
+        : json(usageReport(madeId, made.start, made.end, 'completed', 'ai_credit', [made.link]));
     }
 
     switch (route) {
@@ -327,11 +351,14 @@ export async function startMockGitHub(certificate: string, privateKey: string): 
         return report('aggregate-28-day.json');
       case '/orgs/octo-org/copilot/metrics/reports/organization-28-day/latest':
         return { status: 204 };
-      case '/enterprises/octocorp/copilot/metrics/reports/user-teams-1-day':
       case '/orgs/octo-org/copilot/metrics/reports/user-teams-1-day':
+        if (query.get('day') === reportLastDay) return emptyText;
+        return json({ download_links: [`${DOWNLOADS}/user-teams.ndjson`], report_day: query.get('day') });
+      case '/enterprises/octocorp/copilot/metrics/reports/user-teams-1-day':
         return json({ download_links: [`${DOWNLOADS}/user-teams.ndjson`], report_day: query.get('day') });
       case '/orgs/octo-org/copilot/metrics/reports/users-1-day': {
         const day = query.get('day') ?? '';
+        if (day === emptyDailyDay) return emptyText;
         return day >= oldestDailyDay ? json({ download_links: [`${DOWNLOADS}/users-1-day-${day}.ndjson`], report_day: day }) : failure(404, 'Not Found');
       }
       case '/orgs/octo-org/copilot/metrics/reports/organization-1-day':
@@ -418,6 +445,7 @@ export async function startMockGitHub(certificate: string, privateKey: string): 
     reset: () => {
       requests.length = 0;
       counts.clear();
+      madeReports.clear();
       settings.rejectApiVersion = false;
     },
     reportFirstDay,

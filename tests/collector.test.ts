@@ -221,6 +221,7 @@ describe.skipIf(!CAN_RUN)('data collector scripts against a pretend GitHub', () 
 
   const enterpriseArgs = (file: string) => ['--enterprise', 'octocorp', '--months', '2', '--teams', '--plain', '--yes', '--hostname', MOCK_HOST, '--output', file];
   const organizationArgs = (file: string) => ['--org', 'octo-org', '--months', '3', '--daily-metrics', '--yes', '--hostname', MOCK_HOST, '--output', file];
+  const reportQueueArgs = (file: string) => ['--enterprise', 'octocorp', '--months', '3', '--only', 'usage-report', '--plain', '--yes', '--hostname', MOCK_HOST, '--output', file];
 
   function expectSafeRequests(requests: RecordedRequest[], apiVersion: string | undefined) {
     expect(requests.length).toBeGreaterThan(0);
@@ -270,6 +271,8 @@ describe.skipIf(!CAN_RUN)('data collector scripts against a pretend GitHub', () 
     const result = await run('bash', enterpriseArgs(file));
     expect(result.errors).toBe('');
     expect(result.code, result.output).toBe(0);
+    // Output that does not go to a terminal has no moving step line.
+    expect(result.output).not.toContain('\r');
 
     const bundle = readBundle(file);
     expect(bundle.header).toMatchObject({
@@ -421,6 +424,31 @@ describe.skipIf(!CAN_RUN)('data collector scripts against a pretend GitHub', () 
     expect(mock.requests.filter((request) => request.path.includes('/settings/billing/reports'))).toEqual([]);
   }, RUN_TIMEOUT);
 
+  it('asks for one AI usage report at a time, as GitHub makes only one at a time', async () => {
+    const file = join(folder, 'report-queue.ndjson');
+    const result = await run('bash', reportQueueArgs(file));
+    expect(result.errors).toBe('');
+    expect(result.code, result.output).toBe(0);
+    const [olderMonth, newerMonth] = mock.usageMonths;
+    const oldestMonth = Temporal.PlainYearMonth.from(olderMonth).subtract({ months: 1 });
+    const oldestEnd = oldestMonth.toPlainDate({ day: oldestMonth.daysInMonth }).toString();
+
+    // GitHub is busy with the oldest month, so the script asks for this month only when that report is ready.
+    const created = mock.requests.filter((request) => request.method === 'POST' && request.path === USAGE_REPORTS_PATH);
+    expect(created.map((request) => JSON.parse(request.body).start_date)).toEqual([`${oldestMonth}-01`, `${newerMonth}-01`, `${newerMonth}-01`]);
+    expect(JSON.parse(created[0].body)).toEqual({ report_type: 'ai_credit', start_date: `${oldestMonth}-01`, end_date: oldestEnd });
+    expect(result.output).toContain('1 found, 1 asked for, 1 to ask for later (GitHub makes one at a time)');
+
+    const bundle = readBundle(file);
+    expect(sourcesOf(bundle, 'usage-report').map((line) => [line.month, line.status]).sort()).toEqual([
+      [oldestMonth.toString(), 'ok'], [olderMonth, 'ok'], [newerMonth, 'ok'],
+    ]);
+    expect(result.output).toContain('It has your AI usage report too, so you need no other file.');
+    const collection = await readCollection(new Blob([readFileSync(file)]), 'report-queue.ndjson');
+    expect(new Set(collection.usageReports.map((report) => report.month))).toEqual(new Set([oldestMonth.toString(), olderMonth, newerMonth]));
+    expect(leftoverWork()).toEqual([]);
+  }, RUN_TIMEOUT);
+
   it('reads an organization with the activity of every day', async () => {
     const file = join(folder, 'organization.ndjson.gz');
     const result = await run('bash', organizationArgs(file));
@@ -435,9 +463,9 @@ describe.skipIf(!CAN_RUN)('data collector scripts against a pretend GitHub', () 
     expect(bundle.header.sources).not.toContain('teams');
     expect(countByKind(bundle.records)).toEqual({
       'seat-summary': 1, seat: 2, 'seat-total': 1, member: 3, 'ai-credit-usage': 3, 'usage-summary': 3,
-      'user-metrics': 9, 'user-teams': 2, 'audit-event': 4,
+      'user-metrics': 8, 'user-teams': 2, 'audit-event': 4,
     });
-    expect(bundle.end).toMatchObject({ records: 28 });
+    expect(bundle.end).toMatchObject({ records: 27 });
     expectPrivateFieldsLeftOut(bundle);
 
     expect(bundle.sources.filter((line) => line.status === 'skipped' && !line.endpoint).map((line) => [line.id, line.message])).toEqual([
@@ -451,21 +479,27 @@ describe.skipIf(!CAN_RUN)('data collector scripts against a pretend GitHub', () 
     expect(sourcesOf(bundle, 'billing-usage').map((line) => [line.status, line.http])).toEqual([['failed', 403]]);
     expect(requestsTo(mock.requests, '/organizations/octo-org/settings/billing/usage')).toHaveLength(1);
 
-    // Daily reports go from new to old and stop after three days in a row without a report.
+    // Daily reports go from new to old and stop after three days in a row without a report. A day without data
+    // (GitHub sends an empty text) is passed over and does not count as a failure.
     const dailyDays = requestsTo(mock.requests, '/copilot/metrics/reports/users-1-day').map((request) => request.query.get('day'));
     expect(dailyDays).toEqual([29, 30, 31, 32, 33, 34, 35, 36].map(dayBefore));
-    expect(sourcesOf(bundle, 'user-metrics').map((line) => line.status)).toEqual(['ok', 'ok', 'ok', 'ok', 'ok', 'ok', 'skipped', 'skipped', 'skipped']);
-    expect(sourcesOf(bundle, 'user-metrics')[8].message).toBe('No report for this day.');
+    expect(sourcesOf(bundle, 'user-metrics').map((line) => line.status)).toEqual(['ok', 'ok', 'ok', 'skipped', 'ok', 'ok', 'skipped', 'skipped', 'skipped']);
+    expect(sourcesOf(bundle, 'user-metrics')[3]).toMatchObject({ http: 200, message: 'No report for this day.' });
+    expect(sourcesOf(bundle, 'user-metrics')[8]).toMatchObject({ http: 404, message: 'No report for this day.' });
+    expect(bundle.sources.filter((line) => line.status === 'failed').map((line) => line.id)).toEqual(['budgets', 'billing-usage']);
     // The 28-day totals came back empty (204), so the daily totals start yesterday.
     const totalDays = requestsTo(mock.requests, '/copilot/metrics/reports/organization-1-day').map((request) => request.query.get('day'));
     expect(totalDays).toEqual([1, 2, 3].map(dayBefore));
     expect(sourcesOf(bundle, 'scope-metrics')[0]).toMatchObject({ status: 'ok', records: 0 });
-    expect(requestsTo(mock.requests, '/user-teams-1-day').map((request) => request.query.get('day'))).toEqual([mock.reportLastDay]);
+    // The team report of the last day has no data, so the script takes the day before.
+    expect(requestsTo(mock.requests, '/user-teams-1-day').map((request) => request.query.get('day'))).toEqual([mock.reportLastDay, dayBefore(2)]);
+    expect(sourcesOf(bundle, 'user-teams').map((line) => line.status)).toEqual(['skipped', 'ok']);
     const days = bundle.records.filter((line) => line.kind === 'user-metrics').map((line) => line.record.day);
-    expect(new Set(days)).toEqual(new Set([mock.reportFirstDay, mock.reportLastDay, ...[29, 30, 31, 32, 33].map(dayBefore)]));
+    expect(new Set(days)).toEqual(new Set([mock.reportFirstDay, mock.reportLastDay, ...[29, 30, 32, 33].map(dayBefore)]));
 
     expectSafeRequests(mock.requests, '2026-03-10');
-    expect(result.output).toMatch(/user-metrics\s+ok\s+9/);
+    expect(result.output).toMatch(/user-metrics\s+ok\s+8/);
+    expect(result.output).toMatch(/user-teams\s+ok\s+2/);
     expect(result.output).toMatch(/billing-usage\s+failed/);
   }, RUN_TIMEOUT);
 
@@ -513,10 +547,14 @@ describe.skipIf(!CAN_RUN)('data collector scripts against a pretend GitHub', () 
     const file = join(folder, 'bash-terminal.ndjson');
     const marker = join(folder, 'typed-after-the-end');
     // y answers "Start?". The next line is typed while the script runs; bash must not run it when the script ends.
-    const result = await run('bash-terminal', ['--org', 'octo-org', '--only', 'seat-summary', '--months', '3', '--plain', '--hostname', MOCK_HOST, '--output', file], {}, `y\ntouch '${marker}'\n`);
+    const result = await run('bash-terminal', ['--org', 'octo-org', '--only', 'seat-summary', '--months', '3', '--plain', '--hostname', MOCK_HOST, '--output', file], { TERM: 'xterm' }, `y\ntouch '${marker}'\n`);
     expect(result.code, result.output).toBe(0);
     expect(result.output).toContain('Ready to read');
     expect(result.output).toContain('Start?');
+    // In a terminal the step line moves while the step works, and the helper that moves it stops without a word.
+    expect(result.output).toMatch(/\r {2}Seat totals and policies +[|/\\-]/);
+    expect(result.output).toMatch(/Seat totals and policies +1 item/);
+    expect(result.output).not.toContain('Terminated');
     expect(readBundle(file).header).toMatchObject({ scope: 'organization', organizations: ['octo-org'] });
     expect(existsSync(marker)).toBe(false);
     expect(leftoverWork()).toEqual([]);
@@ -527,6 +565,7 @@ describe.skipIf(!CAN_RUN)('data collector scripts against a pretend GitHub', () 
       for (const [name, args] of [
         ['enterprise', enterpriseArgs],
         ['organization', organizationArgs],
+        ['report queue', reportQueueArgs],
       ] as const) {
         const bashFile = join(folder, `bash-${name}.ndjson.gz`);
         const powershellFile = join(folder, `powershell-${name}.ndjson.gz`);
@@ -553,7 +592,7 @@ describe.skipIf(!CAN_RUN)('data collector scripts against a pretend GitHub', () 
         expect(powershellHeader, name).toEqual(bashHeader);
         expect(leftoverWork(), name).toEqual([]);
       }
-    }, RUN_TIMEOUT * 2);
+    }, RUN_TIMEOUT * 3);
 
     it('runs the same as a script block, as the command from the app does', async () => {
       const fileRun = join(folder, 'powershell-from-file.ndjson');

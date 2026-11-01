@@ -37,14 +37,14 @@ export const GITHUB_DOCS: MetricDoc[] = [
     formula: 'Gap = amount at GitHub − amount in the report, for each month',
     steps: [
       'GitHub billing for a month is the AI credit usage report of GitHub billing, or else the AI credit lines of the billing usage summary.',
-      'An organization file is compared with the report rows of its organizations only. An enterprise file is compared with every row.',
+      'An organization file is compared with the report rows of its organizations only. If none match, it is marked Not in the report instead of being compared with every row. An enterprise file is compared with every row.',
       'Usage is compared first, then the billed amount. Amounts within 2%, or within $1, count as the same.',
       'Same means the amounts agree. Report has less and Report has more mean they do not.',
-      'Month not over: the month had not ended when the data was collected. Part of the month: the report misses more than 3 days at the start or end of the month. Not in the report: the report has no days in the month. No GitHub billing: the file has no complete billing for the month.',
+      'Month not over: the month had not ended when the data was collected. Part of the month: the report misses more than 3 days at the start or end of the month. Not in the report: the report has no days in the month or no matching organization. No GitHub billing: the file has no complete billing for the month.',
     ],
     columns: ['date', 'gross_amount', 'net_amount', 'organization'],
     notes: [
-      'It uses every row you loaded, not the filters.',
+      'It uses every report row in the scope of the GitHub data file, not your filters.',
       'GitHub billing is what you pay.',
       'A report with less than GitHub often misses files or days. A report with more often covers more organizations than the GitHub data file.',
     ],

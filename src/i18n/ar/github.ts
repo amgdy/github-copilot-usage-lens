@@ -227,8 +227,8 @@ const arabic: Dict = {
   'Billed in the report': 'المدفوع إضافيًا في التقرير',
   'Billed at GitHub': 'المدفوع إضافيًا في GitHub',
   'Usage report and GitHub billing': 'تقرير الاستخدام وفوترة GitHub',
-  'Whether each month of the usage report has the same amounts as GitHub billing. It uses every row you loaded, not the filters.':
-    'هل لكل شهر في تقرير الاستخدام المبالغ نفسها الموجودة في فوترة GitHub. يستخدم كل الصفوف التي حمّلتها، لا عوامل التصفية.',
+  'Whether each month of the usage report has the same amounts as GitHub billing. It uses every report row in the scope of the GitHub data file, not your filters.':
+    'هل لكل شهر في تقرير الاستخدام المبالغ نفسها الموجودة في فوترة GitHub. يستخدم كل صفوف التقرير ضمن نطاق ملف بيانات GitHub، لا عوامل التصفية.',
   'The file has no billing months.': 'لا يحتوي الملف على أشهر فوترة.',
 
   // Bill and budgets at GitHub (Usage and pool page)

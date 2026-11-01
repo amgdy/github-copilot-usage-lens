@@ -139,6 +139,7 @@ $script:RecordsTotal = 0
 $script:UsageReportRecords = 0
 $script:UsageReportMonths = 0
 $script:UsageReports = New-Object 'System.Collections.Generic.List[object]'
+$script:UsageLater = New-Object 'System.Collections.Generic.List[string]'
 $script:ReportRequestedAt = 0
 $script:ContextScope = ''
 $script:ContextTarget = ''
@@ -162,6 +163,19 @@ $script:StepFailed = 0
 $script:StepSkipped = 0
 $script:StepHttp = 0
 $script:StepError = ''
+$script:StepNote = ''
+# The step line moves while a step works, but only in a terminal (see the end of the script).
+$script:ShowProgress = $false
+$script:ProgressRoom = 0
+$script:ProgressFrame = 0
+$script:ProgressNote = ''
+$script:StepActive = $false
+$script:StepLabel = ''
+$script:StepTotal = 0
+$script:WatchRecords = 0
+$script:PendingRecords = 0
+$script:DownloadPath = ''
+$script:SpinnerFrames = '|/-\'
 $script:DownloadError = ''
 $script:HttpClient = $null
 $script:FoundEnterprises = @()
@@ -270,7 +284,12 @@ $script:ReportStatusFilter = '"#status \(.status // "")", ((.download_urls // []
 
 $script:TeamMembersFilter = '.[] | {login: (.login // .user.login)} | select(.login != null) | wrap("team-member")'
 
-$script:ReportFilter = '(.download_links // [])[], "#first \(.report_start_day // .report_day // "")", "#last \(.report_end_day // .report_day // "")"'
+# The links and days of a usage metrics report. On a day without data GitHub sends an empty text, not a report.
+$script:ReportFilter = @'
+if type == "object" then (.download_links // [])[],
+    "#first \(.report_start_day // .report_day // "")", "#last \(.report_end_day // .report_day // "")"
+  else "#none" end
+'@
 
 $script:AccountsQuery = @'
 query { viewer {
@@ -383,7 +402,8 @@ function Show-Sources {
   Write-Line 'usage metrics policy for GitHub Copilot set to "Enabled everywhere".'
   Write-Line ''
   Write-Line 'usage-report uses a report from the last 31 days when one covers the month. Otherwise it asks GitHub to make one,'
-  Write-Line 'which takes a few minutes and adds the report to the billing page. It changes no settings.'
+  Write-Line 'which takes a few minutes and adds the report to the billing page. GitHub makes one report at a time, so the script'
+  Write-Line 'asks for the next month when the one before is ready. It changes no settings.'
 }
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -661,14 +681,89 @@ function Add-Status {
   elseif ($Status -eq 'partial') { $script:StepPartial++ }
   elseif ($Status -eq 'failed') { $script:StepFailed++ }
   else { $script:StepSkipped++ }
+  if ($Status -eq 'skipped' -and -not $script:StepNote) { $script:StepNote = $Message }
   if (($Status -eq 'partial' -or $Status -eq 'failed') -and -not $script:StepError) {
     $script:StepHttp = $Http
     $script:StepError = $Message
   }
+  Show-Progress
 }
 
+# The moving part of the step line: a turning sign, a bar when the number of requests is known, and the items read so
+# far or what the step waits for. -Turn turns the sign, and shows how much of a download has arrived.
+function Show-Progress {
+  param([switch]$Turn)
+  if (-not $script:ShowProgress -or -not $script:StepActive -or $script:ProgressRoom -lt 1) { return }
+  if ($Turn) {
+    $script:ProgressFrame = ($script:ProgressFrame + 1) % 4
+    if ($script:DownloadPath -and [System.IO.File]::Exists($script:DownloadPath)) {
+      $script:ProgressNote = 'downloading ' + (Get-SizeText $script:DownloadPath)
+    }
+  }
+  $doneCount = $script:StepOk + $script:StepPartial + $script:StepFailed + $script:StepSkipped
+  $items = $script:StepRecords + $script:PendingRecords + $script:WatchRecords
+  $detail = ''
+  if ($script:ProgressNote) { $detail = $script:ProgressNote }
+  elseif ($items -eq 1) { $detail = '1 item' }
+  elseif ($items -gt 1) { $detail = [string]$items + ' items' }
+  if ($script:StepTotal -gt 0) {
+    if ($doneCount -gt $script:StepTotal) { $doneCount = $script:StepTotal }
+    $counts = [string]$doneCount + '/' + $script:StepTotal
+    if ($detail) { $detail = $counts + ' ' + $detail } else { $detail = $counts }
+    # The bar takes the room that is left, at most 10 marks.
+    $barSize = [Math]::Min(10, $script:ProgressRoom - $detail.Length - 5)
+    if ($barSize -ge 4) {
+      $filled = [int][Math]::Floor($doneCount * $barSize / $script:StepTotal)
+      $detail = '[' + ('#' * $filled) + ('-' * ($barSize - $filled)) + '] ' + $detail
+    }
+  }
+  $text = $script:SpinnerFrames.Substring($script:ProgressFrame, 1)
+  if ($detail) { $text += ' ' + $detail }
+  if ($text.Length -gt $script:ProgressRoom) { $text = $text.Substring(0, $script:ProgressRoom) }
+  Write-Text ("`r  " + $script:StepLabel.PadRight(38) + ' ')
+  Write-Text $text.PadRight($script:ProgressRoom) 'DarkGray'
+}
+
+# Clears the moving part of the step line, so the result can follow the name of the step.
+function Complete-Progress {
+  if ($script:ShowProgress -and $script:StepActive -and $script:ProgressRoom -ge 1) {
+    $start = "`r  " + $script:StepLabel.PadRight(38) + ' '
+    Write-Text ($start + (' ' * $script:ProgressRoom) + $start)
+  }
+  $script:StepActive = $false
+}
+
+# Waits a number of seconds. In a terminal the step line keeps moving.
+function Wait-WithProgress {
+  param([int]$Seconds)
+  if ($Seconds -le 0) { return }
+  if (-not $script:ShowProgress -or -not $script:StepActive -or $script:ProgressRoom -lt 1) {
+    Start-Sleep -Seconds $Seconds
+    return
+  }
+  $until = [DateTime]::UtcNow.AddSeconds($Seconds)
+  while ([DateTime]::UtcNow -lt $until) {
+    Start-Sleep -Milliseconds 200
+    Show-Progress -Turn
+  }
+}
+
+# Start-Step LABEL [REQUESTS]: REQUESTS is how many requests the step makes, when that is known.
 function Start-Step {
-  param([string]$Label)
+  param([string]$Label, [int]$Total = 0)
+  $script:StepLabel = $Label
+  $script:StepTotal = $Total
+  $script:StepActive = $true
+  $script:ProgressNote = ''
+  $script:WatchRecords = 0
+  $script:PendingRecords = 0
+  if ($script:ShowProgress) {
+    # The window can change size between steps. The line must not wrap, or it cannot be drawn again.
+    $width = 80
+    try { $width = [Console]::WindowWidth } catch { $width = 80 }
+    if ($width -le 0) { $width = 80 }
+    $script:ProgressRoom = [Math]::Min(50, $width - 42)
+  }
   $script:StepRecords = 0
   $script:StepOk = 0
   $script:StepPartial = 0
@@ -676,7 +771,9 @@ function Start-Step {
   $script:StepSkipped = 0
   $script:StepHttp = 0
   $script:StepError = ''
+  $script:StepNote = ''
   Write-Text ('  ' + $Label.PadRight(38) + ' ')
+  Show-Progress
 }
 
 function Get-FailureText {
@@ -687,7 +784,10 @@ function Get-FailureText {
 
 function Complete-Step {
   $calls = $script:StepOk + $script:StepPartial + $script:StepFailed
-  if ($calls -eq 0) {
+  Complete-Progress
+  if ($calls -eq 0 -and $script:StepNote) {
+    Write-Line ('none (' + $script:StepNote + ')') 'DarkGray'
+  } elseif ($calls -eq 0) {
     Write-Line 'skipped' 'DarkGray'
   } elseif ($script:StepFailed -eq 0 -and $script:StepPartial -eq 0) {
     Write-Line (Get-CountText $script:StepRecords) 'Green'
@@ -776,7 +876,29 @@ function Invoke-Program {
     try { $process.StandardInput.Close() } catch { $null = $_ }
     $errorTask = $process.StandardError.ReadToEndAsync()
     $lines = New-Object 'System.Collections.Generic.List[string]'
-    while ($null -ne ($line = $process.StandardOutput.ReadLine())) { $lines.Add($line) }
+    if ($script:ShowProgress -and $script:StepActive -and $script:ProgressRoom -ge 1) {
+      # In a terminal the step line moves while the program works, and counts the records it has printed so far.
+      $clock = [System.Diagnostics.Stopwatch]::StartNew()
+      $script:WatchRecords = 0
+      while ($true) {
+        $lineTask = $process.StandardOutput.ReadLineAsync()
+        while (-not $lineTask.Wait(200)) {
+          Show-Progress -Turn
+          $clock.Restart()
+        }
+        $line = $lineTask.Result
+        if ($null -eq $line) { break }
+        $lines.Add($line)
+        if ($line.StartsWith('{"kind":"', [StringComparison]::Ordinal)) { $script:WatchRecords++ }
+        if ($clock.ElapsedMilliseconds -ge 200) {
+          Show-Progress -Turn
+          $clock.Restart()
+        }
+      }
+      $script:WatchRecords = 0
+    } else {
+      while ($null -ne ($line = $process.StandardOutput.ReadLine())) { $lines.Add($line) }
+    }
     $process.WaitForExit()
     $errorText = $errorTask.GetAwaiter().GetResult()
     return [pscustomobject]@{ ExitCode = $process.ExitCode; Lines = $lines; ErrorText = [string]$errorText }
@@ -821,9 +943,14 @@ function Invoke-GhApi {
     }
     if (-not $retry) { return $false }
     $waitSeconds = $attempt * $attempt * $script:RetrySeconds
-    Write-Text ('(busy, waiting ' + $waitSeconds + ' s)') 'DarkGray'
-    Write-Text ' '
-    if ($waitSeconds -gt 0) { Start-Sleep -Seconds $waitSeconds }
+    if ($script:ShowProgress -and $script:StepActive) {
+      $script:ProgressNote = 'busy, waiting ' + $waitSeconds + ' s'
+    } else {
+      Write-Text ('(busy, waiting ' + $waitSeconds + ' s)') 'DarkGray'
+      Write-Text ' '
+    }
+    Wait-WithProgress $waitSeconds
+    $script:ProgressNote = ''
     $attempt++
   }
 }
@@ -882,7 +1009,9 @@ function Invoke-FetchPages {
   $total = 0
   for ($page = 1; $page -le $script:MaxPages; $page++) {
     $pageEndpoint = $Endpoint + $separator + 'per_page=100&page=' + $page
+    $script:PendingRecords = $total
     $worked = Invoke-GhApi @($pageEndpoint, '--jq', ($script:JqWrap + ' ' + $Filter))
+    $script:PendingRecords = 0
     $total += (Save-Records $script:GhLines)
     if (-not $worked) {
       if ($total -gt 0) {
@@ -960,7 +1089,12 @@ function Save-DownloadWithDotNet {
       $source = $response.Content.ReadAsStreamAsync().GetAwaiter().GetResult()
       try {
         $target = [System.IO.File]::Create($Path)
-        try { $source.CopyTo($target) } finally { $target.Dispose() }
+        try {
+          $copyTask = $source.CopyToAsync($target)
+          while (-not $copyTask.Wait(200)) { Show-Progress -Turn }
+        } finally {
+          $target.Dispose()
+        }
       } finally {
         $source.Dispose()
       }
@@ -979,9 +1113,15 @@ function Save-Download {
   param([string]$Url, [string]$Path)
   $script:DownloadError = ''
   if (-not $Url.StartsWith('https://', [StringComparison]::Ordinal)) { return $false }
-  if (-not $script:CurlPath) { return (Save-DownloadWithDotNet $Url $Path) }
-  $result = Invoke-Program $script:CurlPath @('--fail', '--silent', '--show-error', '--location', '--proto', '=https',
-    '--proto-redir', '=https', '--retry', '2', '--connect-timeout', '30', '--output', $Path, $Url)
+  $script:DownloadPath = $Path
+  try {
+    if (-not $script:CurlPath) { return (Save-DownloadWithDotNet $Url $Path) }
+    $result = Invoke-Program $script:CurlPath @('--fail', '--silent', '--show-error', '--location', '--proto', '=https',
+      '--proto-redir', '=https', '--retry', '2', '--connect-timeout', '30', '--output', $Path, $Url)
+  } finally {
+    $script:DownloadPath = ''
+    $script:ProgressNote = ''
+  }
   if ($result.ExitCode -eq 0) { return $true }
   $script:DownloadError = @($result.ErrorText -split "`n")[0].TrimEnd([char]13)
   return $false
@@ -1062,6 +1202,8 @@ function Add-ReportLines {
 
 # Asks for a usage metrics report and downloads its files. Sets ReportFirstDay and ReportLastDay when GitHub says which
 # days the report covers. For a daily report, "not found" means there is no report for that day.
+# Returns 'ok' when it worked, 'failed' when it failed and 'none' when GitHub sent no report, as it does for a day
+# without data.
 function Invoke-FetchReport {
   param([string]$SourceId, [string]$Kind, [string]$Endpoint, [switch]$Daily)
   $script:ReportFirstDay = ''
@@ -1072,9 +1214,17 @@ function Invoke-FetchReport {
     } else {
       Add-Status $SourceId 'failed' 0 $script:LastHttp $script:LastError $Endpoint
     }
-    return $false
+    return 'failed'
   }
   $reportLines = $script:GhLines
+  if (@($reportLines | Where-Object { ([string]$_).TrimEnd("`r") -ceq '#none' }).Count -gt 0) {
+    if ($Endpoint.Contains('day=')) {
+      Add-Status $SourceId 'skipped' 0 200 'No report for this day.' $Endpoint
+    } else {
+      Add-Status $SourceId 'skipped' 0 200 'No report yet.' $Endpoint
+    }
+    return 'none'
+  }
   $firstDays = @(Get-ControlValues $reportLines 'first')
   if ($firstDays.Count -gt 0) { $script:ReportFirstDay = $firstDays[0] }
   $lastDays = @(Get-ControlValues $reportLines 'last')
@@ -1091,12 +1241,12 @@ function Invoke-FetchReport {
     [System.IO.File]::Delete($textPath)
     if (-not (Save-Download $link $downloadPath)) {
       Add-Status $SourceId 'failed' $count 0 ('Could not download the report file: ' + $script:DownloadError) $Endpoint
-      return $false
+      return 'failed'
     }
     if (Test-GzipFile $downloadPath) {
       if (-not (Expand-GzipFile $downloadPath $textPath)) {
         Add-Status $SourceId 'failed' $count 0 'Could not unpack the report file.' $Endpoint
-        return $false
+        return 'failed'
       }
     } else {
       [System.IO.File]::Move($downloadPath, $textPath)
@@ -1106,7 +1256,7 @@ function Invoke-FetchReport {
   [System.IO.File]::Delete($downloadPath)
   [System.IO.File]::Delete($textPath)
   Add-Status $SourceId 'ok' $count 200 '' $Endpoint
-  return $true
+  return 'ok'
 }
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -1185,6 +1335,7 @@ function Read-Budgets {
   Start-Step 'Budgets'
   if ((Invoke-FetchPages 'budgets' $Endpoint $script:BudgetFilter) -and $WithUsers) {
     $budgetLines = $script:ControlLines.ToArray()
+    $script:StepTotal = 1 + @($budgetLines | Where-Object { $_.StartsWith('#users ', [StringComparison]::Ordinal) }).Count
     foreach ($line in $budgetLines) {
       if (-not $line.StartsWith('#users ', [StringComparison]::Ordinal)) { continue }
       $budgetId = $line.Substring(7)
@@ -1215,7 +1366,7 @@ function Read-Billing {
       $path = 'usage'
       $filter = $script:BillingUsageFilter
     }
-    Start-Step $label
+    Start-Step $label @($script:MonthKeys).Count
     foreach ($month in $script:MonthKeys) {
       $script:ContextMonth = $month
       $year = $month.Substring(0, 4)
@@ -1229,7 +1380,8 @@ function Read-Billing {
 }
 
 # Reads the latest 28-day activity report and, with -DailyMetrics, the daily report of every earlier day in the chosen
-# months. It goes back one day at a time and stops after three days in a row without a report.
+# months. It goes back one day at a time and stops after three failed days in a row, or after a week in a row of days
+# without data.
 function Read-Reports {
   param([string]$SourceId, [string]$Base, [string]$DailyName, [string]$LatestName, [string]$Label)
   Start-Step $Label
@@ -1240,10 +1392,18 @@ function Read-Reports {
     if (-not $day) { $day = $script:Today }
     $day = Get-ShiftedDay $day -1
     $firstDay = Get-MetricsStartDay
+    $script:StepTotal = ([DateTime]::ParseExact($day, 'yyyy-MM-dd', $script:Invariant) -
+      [DateTime]::ParseExact($firstDay, 'yyyy-MM-dd', $script:Invariant)).Days + 2
     $failures = 0
+    $emptyDays = 0
     while ([string]::CompareOrdinal($day, $firstDay) -ge 0) {
-      if (Invoke-FetchReport $SourceId $SourceId ($Base + '/' + $DailyName + '?day=' + $day) -Daily) {
+      $result = Invoke-FetchReport $SourceId $SourceId ($Base + '/' + $DailyName + '?day=' + $day) -Daily
+      if ($result -ceq 'ok') {
         $failures = 0
+        $emptyDays = 0
+      } elseif ($result -ceq 'none') {
+        $emptyDays++
+        if ($emptyDays -ge 7) { break }
       } else {
         $failures++
         if ($failures -ge 3 -or (Test-NoAccessYet)) { break }
@@ -1267,14 +1427,18 @@ function Read-Metrics {
     Start-Step 'Teams of GitHub Copilot users'
     $day = $script:LatestReportDay
     if (-not $day) { $day = Get-ShiftedDay (Get-ShiftedDay $script:Today -1) -1 }
-    $null = Invoke-FetchReport 'user-teams' 'user-teams' ($Base + '/user-teams-1-day?day=' + $day)
+    # The latest day with a report, at most three days back.
+    for ($attempt = 0; $attempt -lt 3; $attempt++) {
+      if ((Invoke-FetchReport 'user-teams' 'user-teams' ($Base + '/user-teams-1-day?day=' + $day)) -cne 'none') { break }
+      $day = Get-ShiftedDay $day -1
+    }
     Complete-Step
   }
 }
 
 function Read-AuditLog {
   param([string]$Endpoint)
-  Start-Step 'Audit log: seat and budget changes'
+  Start-Step 'Audit log: seat and budget changes' 2
   foreach ($topic in @('copilot', 'billing')) {
     $phrase = 'phrase=action:' + $topic + ' created:>=' + $script:WindowStart
     $null = Invoke-Fetch 'audit-log' $Endpoint $script:AuditFilter @('--paginate', '--method', 'GET', '-f', $phrase)
@@ -1288,6 +1452,7 @@ function Read-Teams {
   Start-Step $Label
   if (Invoke-Fetch 'teams' $Endpoint $script:TeamsFilter @('--paginate')) {
     $slugs = @(Get-ControlValues $script:OutLines 'team')
+    $script:StepTotal = 1 + $slugs.Count
     foreach ($slug in $slugs) {
       if ($slug -cnotmatch '^[A-Za-z0-9_.:-]+\z') { continue }
       $script:ContextParent = $slug
@@ -1388,15 +1553,54 @@ function Add-UsageReportFile {
   return [pscustomobject]@{ Lines = $lineCount; Parts = $partCount }
 }
 
+# The first day of a month, its last day so far and its last day.
+function Get-MonthDays {
+  param([string]$Month)
+  $dayCount = [DateTime]::DaysInMonth([int]$Month.Substring(0, 4), [int]$Month.Substring(5, 2))
+  $monthEnd = $Month + '-' + $dayCount.ToString('00', $script:Invariant)
+  $last = $monthEnd
+  if ([string]::CompareOrdinal($last, $script:Today) -gt 0) { $last = $script:Today }
+  return [pscustomobject]@{ First = $Month + '-01'; Last = $last; End = $monthEnd }
+}
+
+# Asks GitHub to make the AI usage report of one month and adds it to the list. Returns 'asked' when GitHub makes it,
+# 'busy' when GitHub is still making another report (it makes one at a time) and 'failed' when it failed.
+function Request-UsageReport {
+  param([string]$Base, [string]$Month, $List)
+  $days = Get-MonthDays $Month
+  $script:ContextMonth = $Month
+  try {
+    if (-not (Invoke-GhApi @($Base, '--method', 'POST', '-f', 'report_type=ai_credit', '-f', ('start_date=' + $days.First),
+          '-f', ('end_date=' + $days.Last), '--jq', '.id // ""'))) {
+      if ($script:LastHttp -eq 409) { return 'busy' }
+      Add-Status 'usage-report' 'failed' 0 $script:LastHttp $script:LastError $Base
+      return 'failed'
+    }
+    $reportId = ''
+    if ($script:GhLines.Count -gt 0) { $reportId = ([string]$script:GhLines[0]).Replace("`r", '') }
+    if ($reportId -cnotmatch '^[A-Za-z0-9-]+\z') {
+      Add-Status 'usage-report' 'failed' 0 0 'GitHub did not say which report it makes.' $Base
+      return 'failed'
+    }
+    $List.Add([pscustomobject]@{ Month = $Month; ReportId = $reportId })
+    return 'asked'
+  } finally {
+    $script:ContextMonth = ''
+  }
+}
+
 # Finds the AI usage report of every chosen month on the billing page (GitHub keeps them for 31 days), or asks GitHub
 # to make one. GitHub makes them while the other data is read, and Read-UsageReports downloads them at the end.
+# GitHub makes one report at a time, so the months it cannot take yet wait in UsageLater.
 function Request-UsageReports {
   param([string]$Base)
   $script:UsageReports.Clear()
+  $script:UsageLater.Clear()
   $script:ReportRequestedAt = Get-UnixSeconds
   $ready = 0
   $asked = 0
-  Start-Step 'AI usage report'
+  $busy = $false
+  Start-Step 'AI usage report: find or ask for'
   if (-not (Invoke-GhApi @($Base, '--jq', $script:ReportListFilter))) {
     Add-Status 'usage-report' 'failed' 0 $script:LastHttp $script:LastError $Base
     Complete-Step
@@ -1404,11 +1608,7 @@ function Request-UsageReports {
   }
   $listed = @(Get-ControlValues $script:GhLines 'report')
   foreach ($month in $script:MonthKeys) {
-    $first = $month + '-01'
-    $dayCount = [DateTime]::DaysInMonth([int]$month.Substring(0, 4), [int]$month.Substring(5, 2))
-    $monthEnd = $month + '-' + $dayCount.ToString('00', $script:Invariant)
-    $last = $monthEnd
-    if ([string]::CompareOrdinal($last, $script:Today) -gt 0) { $last = $script:Today }
+    $days = Get-MonthDays $month
     # A finished report first, then one GitHub is still making. It must cover the whole month and no other month.
     $found = ''
     $processingId = ''
@@ -1416,8 +1616,8 @@ function Request-UsageReports {
     foreach ($entry in $listed) {
       $fields = $entry.Split([char]9)
       if ($fields.Count -lt 4) { continue }
-      if ($fields[1] -cne $first -or [string]::CompareOrdinal($fields[2], $last) -lt 0 -or
-        [string]::CompareOrdinal($fields[2], $monthEnd) -gt 0) { continue }
+      if ($fields[1] -cne $days.First -or [string]::CompareOrdinal($fields[2], $days.Last) -lt 0 -or
+        [string]::CompareOrdinal($fields[2], $days.End) -gt 0) { continue }
       if ($fields[3] -ceq 'completed') {
         $found = $fields[0]
         $finishedFound = $true
@@ -1431,35 +1631,35 @@ function Request-UsageReports {
       $ready++
       continue
     }
-    $script:ContextMonth = $month
-    if (Invoke-GhApi @($Base, '--method', 'POST', '-f', 'report_type=ai_credit', '-f', ('start_date=' + $first), '-f',
-        ('end_date=' + $last), '--jq', '.id // ""')) {
-      $reportId = ''
-      if ($script:GhLines.Count -gt 0) { $reportId = ([string]$script:GhLines[0]).Replace("`r", '') }
-      if ($reportId -cmatch '^[A-Za-z0-9-]+\z') {
-        $script:UsageReports.Add([pscustomobject]@{ Month = $month; ReportId = $reportId })
-        $asked++
-      } else {
-        Add-Status 'usage-report' 'failed' 0 0 'GitHub did not say which report it makes.' $Base
-      }
-    } else {
-      Add-Status 'usage-report' 'failed' 0 $script:LastHttp $script:LastError $Base
-      if (Test-NoAccessYet) {
-        $script:ContextMonth = ''
-        break
-      }
+    if ($busy) {
+      $script:UsageLater.Add($month)
+      continue
     }
-    $script:ContextMonth = ''
+    $result = Request-UsageReport $Base $month $script:UsageReports
+    if ($result -ceq 'asked') {
+      $asked++
+    } elseif ($result -ceq 'busy') {
+      $busy = $true
+      $script:UsageLater.Add($month)
+    } elseif (Test-NoAccessYet) {
+      break
+    }
   }
-  if ($script:UsageReports.Count -eq 0) {
+  if ($script:UsageReports.Count -eq 0 -and $script:UsageLater.Count -eq 0) {
     Complete-Step
     return
   }
+  Complete-Progress
   $summary = [string]$ready + ' found, ' + $asked + ' asked for'
+  if ($script:UsageLater.Count -gt 0) { $summary += ', ' + $script:UsageLater.Count + ' to ask for later' }
   if ($script:StepFailed -gt 0) {
     Write-Text ($summary + ', ' + $script:StepFailed + ' failed') 'Yellow'
     Write-Text ' '
     Write-Line (Get-FailureText) 'DarkGray'
+  } elseif ($script:UsageLater.Count -gt 0) {
+    Write-Text $summary 'Green'
+    Write-Text ' '
+    Write-Line '(GitHub makes one at a time)' 'DarkGray'
   } else {
     Write-Text $summary 'Green'
     Write-Text ' '
@@ -1522,15 +1722,16 @@ function Save-UsageReport {
   return $true
 }
 
-# Waits until GitHub has made the AI usage reports, at most ReportWaitSeconds after they were asked for, and
-# downloads them. A report that is not ready by then is reported, and the next run uses it.
+# Waits until GitHub has made the AI usage reports and downloads them. When they are done, it asks for the months that
+# waited their turn. It waits at most ReportWaitSeconds after the last report was asked for. A report that is not
+# ready by then is reported, and the next run uses it.
 function Read-UsageReports {
   param([string]$Base)
-  if ($script:UsageReports.Count -eq 0) { return }
+  if ($script:UsageReports.Count -eq 0 -and $script:UsageLater.Count -eq 0) { return }
   $deadline = $script:ReportRequestedAt + $script:ReportWaitSeconds
   $pending = $script:UsageReports.ToArray()
   $waitShown = $false
-  Start-Step 'AI usage report'
+  Start-Step 'AI usage report: download' ($script:UsageReports.Count + $script:UsageLater.Count)
   while ($true) {
     $waiting = New-Object 'System.Collections.Generic.List[object]'
     foreach ($report in $pending) {
@@ -1553,23 +1754,39 @@ function Read-UsageReports {
       }
     }
     $script:ContextMonth = ''
-    if ($waiting.Count -eq 0) { break }
+    # GitHub makes one report at a time. When it has made the ones asked for, ask for the next month.
+    if ($waiting.Count -eq 0 -and $script:UsageLater.Count -gt 0) {
+      $result = Request-UsageReport $Base $script:UsageLater[0] $waiting
+      if ($result -cne 'busy') { $script:UsageLater.RemoveAt(0) }
+      if ($result -ceq 'asked') { $deadline = (Get-UnixSeconds) + $script:ReportWaitSeconds }
+    }
+    if ($waiting.Count -eq 0 -and $script:UsageLater.Count -eq 0) { break }
     if ((Get-UnixSeconds) -ge $deadline) {
       foreach ($report in $waiting) {
         $script:ContextMonth = $report.Month
         Add-Status 'usage-report' 'failed' 0 0 ('GitHub is still making the report. Run the script again in a few ' +
           'minutes. It uses the same report.') ($Base + '/' + $report.ReportId)
       }
+      foreach ($month in $script:UsageLater) {
+        $script:ContextMonth = $month
+        Add-Status 'usage-report' 'failed' 0 0 ('GitHub makes one report at a time and had no time for this month. ' +
+          'Run the script again in a few minutes.') $Base
+      }
       $script:ContextMonth = ''
       break
     }
-    if (-not $waitShown) {
-      Write-Text '(GitHub is making it, this takes a few minutes)' 'DarkGray'
-      Write-Text ' '
-      $waitShown = $true
+    if ($script:ShowProgress) {
+      $script:ProgressNote = 'GitHub makes it, up to ' + [Math]::Floor(($deadline - (Get-UnixSeconds) + 59) / 60) + ' min'
+    } else {
+      if (-not $waitShown) {
+        Write-Text '(GitHub is making it, this takes a few minutes for each month)' 'DarkGray'
+        Write-Text ' '
+        $waitShown = $true
+      }
+      Write-Text '.' 'DarkGray'
     }
-    Write-Text '.' 'DarkGray'
-    if ($script:ReportPollSeconds -gt 0) { Start-Sleep -Seconds $script:ReportPollSeconds }
+    Wait-WithProgress $script:ReportPollSeconds
+    $script:ProgressNote = ''
     $pending = $waiting.ToArray()
   }
   if ($waitShown) { Write-Text ' ' }
@@ -1891,7 +2108,7 @@ function Read-RunOptions {
   if ($script:EnterpriseSlug -and $script:OnlySources.Count -eq 0 -and -not $script:SkipSources.Contains('usage-report')) {
     Write-Line ''
     Write-Line 'This script can get the AI usage report too. Then this one file is all you need in the app.'
-    Write-Line 'If there is no recent report, GitHub makes one, as the billing page does. This takes a few minutes.' 'DarkGray'
+    Write-Line 'If there is no recent report, GitHub makes one, as the billing page does. This takes a few minutes for each month.' 'DarkGray'
     if (-not (Read-YesNo 'Get the AI usage report?' $true)) { $script:SkipSources.Add('usage-report') }
   }
   if ($script:MonthCount -eq 0) {
@@ -2239,6 +2456,7 @@ function Invoke-Main {
 }
 
 $script:UseColor = -not [Console]::IsOutputRedirected -and -not $env:NO_COLOR -and $env:TERM -ne 'dumb'
+$script:ShowProgress = -not [Console]::IsOutputRedirected -and $env:TERM -ne 'dumb'
 try {
   Invoke-Main
 } finally {

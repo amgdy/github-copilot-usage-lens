@@ -74,6 +74,21 @@ context_target=""
 context_month=""
 context_parent=""
 report_day=""
+# The step line moves while a step works, but only in a terminal (see main).
+progress="no"
+progress_room=0
+progress_frame=0
+progress_note=""
+step_active="no"
+step_label=""
+step_total=0
+watch_records=0
+pending_records=0
+ticker_pid=""
+tick_seconds=1
+SPINNER_FRAMES='|/-\'
+BAR_FULL="##########"
+BAR_EMPTY="----------"
 month_keys=""
 window_start=""
 
@@ -169,7 +184,8 @@ For organizations, the billing sources need an organization owner or billing man
 usage metrics policy for GitHub Copilot set to "Enabled everywhere".
 
 usage-report uses a report from the last 31 days when one covers the month. Otherwise it asks GitHub to make one,
-which takes a few minutes and adds the report to the billing page. It changes no settings.
+which takes a few minutes and adds the report to the billing page. GitHub makes one report at a time, so the script
+asks for the next month when the one before is ready. It changes no settings.
 EOF
 }
 
@@ -352,6 +368,22 @@ shift_day() {
   printf '%04d-%02d-%02d' "$year" "$month" "$day"
 }
 
+# Prints the number of days from 1970-01-01 to the YYYY-MM-DD date in $1.
+day_number() {
+  local year=$((10#${1%%-*})) rest="${1#*-}" month day era year_of_era day_of_year
+  month=$((10#${rest%%-*}))
+  day=$((10#${rest#*-}))
+  if [ "$month" -le 2 ]; then
+    year=$((year - 1))
+    day_of_year=$(((153 * (month + 9) + 2) / 5 + day - 1))
+  else
+    day_of_year=$(((153 * (month - 3) + 2) / 5 + day - 1))
+  fi
+  era=$((year / 400))
+  year_of_era=$((year - era * 400))
+  printf '%s' $((era * 146097 + year_of_era * 365 + year_of_era / 4 - year_of_era / 100 + day_of_year - 719468))
+}
+
 # Sets month_keys (YYYY-MM, oldest first, ending with this month) and window_start (the first day of the oldest month).
 build_months() {
   local year=$((10#${today%%-*})) rest="${today#*-}" month count=0 list=""
@@ -404,15 +436,128 @@ add_status() {
     failed) step_failed=$((step_failed + 1)) ;;
     *) step_skipped=$((step_skipped + 1)) ;;
   esac
+  if [ "$status" = skipped ] && [ -z "$step_note" ]; then
+    step_note="$message"
+  fi
   if [ "$status" = partial ] || [ "$status" = failed ]; then
     if [ -z "$step_error" ]; then
       step_http="$http"
       step_error="$message"
     fi
   fi
+  draw_progress
 }
 
+# The moving part of the step line: a turning sign, a bar when the number of requests is known, and the items read so
+# far or what the step waits for. It is written to fd 4, the terminal, so it never ends up in a file a command writes.
+draw_progress() {
+  local done_count=$((step_ok + step_partial + step_failed + step_skipped))
+  local items=$((step_records + pending_records + watch_records))
+  local detail="" text room bar_size filled
+  if [ "$progress" != yes ] || [ "$step_active" != yes ] || [ "$progress_room" -lt 1 ]; then
+    return 0
+  fi
+  if [ -n "$progress_note" ]; then
+    detail="$progress_note"
+  elif [ "$items" -eq 1 ]; then
+    detail="1 item"
+  elif [ "$items" -gt 1 ]; then
+    detail="$items items"
+  fi
+  if [ "$step_total" -gt 0 ]; then
+    if [ "$done_count" -gt "$step_total" ]; then
+      done_count="$step_total"
+    fi
+    detail="$done_count/$step_total${detail:+ $detail}"
+    # The bar takes the room that is left, at most 10 marks.
+    room=$((progress_room - ${#detail} - 5))
+    bar_size=10
+    if [ "$room" -lt "$bar_size" ]; then
+      bar_size="$room"
+    fi
+    if [ "$bar_size" -ge 4 ]; then
+      filled=$((done_count * bar_size / step_total))
+      detail="[${BAR_FULL:0:filled}${BAR_EMPTY:0:bar_size - filled}] $detail"
+    fi
+  fi
+  text="${SPINNER_FRAMES:progress_frame:1}${detail:+ $detail}"
+  printf '\r  %-38s %s%-*s%s' "$step_label" "$dim" "$progress_room" "${text:0:progress_room}" "$reset" >&4
+}
+
+# Turns the sign. $1 is a file whose records are counted as they come, $2 a file that is being downloaded.
+tick_progress() {
+  progress_frame=$(((progress_frame + 1) % 4))
+  if [ -n "${1:-}" ]; then
+    watch_records=$(grep -c '^[{]"kind":"' "$1" 2>/dev/null)
+    watch_records=${watch_records:-0}
+  fi
+  if [ -n "${2:-}" ] && [ -f "$2" ]; then
+    progress_note="downloading $(size_text "$2")"
+  fi
+  draw_progress
+}
+
+# While a command runs or the script waits, a helper in the background turns the sign. The arguments are those of
+# tick_progress. The helper has its own copy of the variables, so stop_ticker must run before the step line changes.
+start_ticker() {
+  if [ "$progress" != yes ] || [ "$step_active" != yes ] || [ "$progress_room" -lt 1 ]; then
+    return 0
+  fi
+  (
+    while :; do
+      sleep "$tick_seconds"
+      # Stops when the script is gone, also when it was killed and could not stop this helper.
+      kill -0 "$$" 2>/dev/null || exit 0
+      tick_progress "${1:-}" "${2:-}"
+    done
+  ) &
+  ticker_pid=$!
+}
+
+stop_ticker() {
+  if [ -n "$ticker_pid" ]; then
+    kill "$ticker_pid" 2>/dev/null
+    wait "$ticker_pid" 2>/dev/null
+    ticker_pid=""
+  fi
+}
+
+# Waits $1 seconds. In a terminal the step line keeps moving.
+pause() {
+  start_ticker
+  sleep "$1"
+  stop_ticker
+}
+
+# Clears the moving part of the step line, so the result can follow the name of the step.
+end_progress() {
+  if [ "$progress" = yes ] && [ "$step_active" = yes ] && [ "$progress_room" -ge 1 ]; then
+    printf '\r  %-38s %*s\r  %-38s ' "$step_label" "$progress_room" "" "$step_label" >&4
+  fi
+  step_active="no"
+}
+
+# begin_step LABEL [REQUESTS]: REQUESTS is how many requests the step makes, when that is known.
 begin_step() {
+  local size
+  step_label="$1"
+  step_total="${2:-0}"
+  step_active="yes"
+  progress_note=""
+  watch_records=0
+  pending_records=0
+  if [ "$progress" = yes ]; then
+    # The terminal can change size between steps. The line must not wrap, or it cannot be drawn again.
+    size=$(stty size 2>/dev/null <&4)
+    size="${size##* }"
+    case "$size" in
+      "" | 0 | *[!0-9]*) size=80 ;;
+    esac
+    progress_room=$((size - 42))
+    if [ "$progress_room" -gt 50 ]; then
+      progress_room=50
+    fi
+  fi
   step_records=0
   step_ok=0
   step_partial=0
@@ -420,7 +565,9 @@ begin_step() {
   step_skipped=0
   step_http=""
   step_error=""
+  step_note=""
   printf '  %-38s ' "$1"
+  draw_progress
 }
 
 failure_text() {
@@ -433,7 +580,10 @@ failure_text() {
 
 end_step() {
   local calls=$((step_ok + step_partial + step_failed))
-  if [ "$calls" -eq 0 ]; then
+  end_progress
+  if [ "$calls" -eq 0 ] && [ -n "$step_note" ]; then
+    say "${dim}none ($step_note)${reset}"
+  elif [ "$calls" -eq 0 ]; then
     say "${dim}skipped${reset}"
   elif [ "$step_failed" -eq 0 ] && [ "$step_partial" -eq 0 ]; then
     say "${green}$(count_text "$step_records")${reset}"
@@ -467,10 +617,13 @@ run_gh() {
   local output_file="$1" attempt=1 exit_code wait_seconds
   shift
   while :; do
+    start_ticker "$output_file"
     LENS_SCOPE="$context_scope" LENS_TARGET="$context_target" LENS_MONTH="$context_month" \
       LENS_PARENT="$context_parent" gh api --hostname "$host" "${version_args[@]}" "$@" \
       >"$output_file" 2>"$work/stderr" </dev/null
     exit_code=$?
+    stop_ticker
+    watch_records=0
     if [ "$exit_code" -eq 0 ]; then
       last_http=200
       last_error=""
@@ -494,8 +647,13 @@ run_gh() {
       *) return 1 ;;
     esac
     wait_seconds=$((attempt * attempt * RETRY_SECONDS))
-    printf '%s(busy, waiting %s s)%s ' "$dim" "$wait_seconds" "$reset"
-    sleep "$wait_seconds"
+    if [ "$progress" = yes ] && [ "$step_active" = yes ]; then
+      progress_note="busy, waiting $wait_seconds s"
+    else
+      printf '%s(busy, waiting %s s)%s ' "$dim" "$wait_seconds" "$reset"
+    fi
+    pause "$wait_seconds"
+    progress_note=""
     attempt=$((attempt + 1))
   done
 }
@@ -545,7 +703,9 @@ fetch_pages() {
   esac
   : >"$work/control"
   while [ "$page" -le "$MAX_PAGES" ]; do
+    pending_records="$total"
     if ! run_gh "$work/out" "$endpoint${separator}per_page=100&page=$page" --jq "$JQ_WRAP $filter"; then
+      pending_records=0
       keep_records "$work/out"
       total=$((total + kept))
       if [ "$total" -gt 0 ]; then
@@ -561,6 +721,7 @@ fetch_pages() {
     grep -q '^#more$' "$work/out" || break
     page=$((page + 1))
   done
+  pending_records=0
   add_status "$source_id" ok "$total" 200 "" "$endpoint"
   return 0
 }
@@ -571,15 +732,22 @@ download() {
     https://*) ;;
     *) return 1 ;;
   esac
+  local exit_code
+  start_ticker "" "$2"
   if command -v curl >/dev/null 2>&1; then
     curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --retry 2 \
       --connect-timeout 30 --output "$2" "$1" 2>"$work/download-error"
+    exit_code=$?
   elif command -v wget >/dev/null 2>&1; then
     wget -q -O "$2" "$1" 2>"$work/download-error"
+    exit_code=$?
   else
     printf 'Install curl or wget to download the activity reports.' >"$work/download-error"
-    return 1
+    exit_code=1
   fi
+  stop_ticker
+  progress_note=""
+  return "$exit_code"
 }
 
 # Adds every JSON line of a report file as one record. A file that is not one object per line becomes one record.
@@ -615,18 +783,25 @@ wrap_report_lines() {
 # fetch_report SOURCE KIND ENDPOINT [daily]
 # Asks for a usage metrics report and downloads its files. Sets report_first_day and report_last_day when GitHub
 # says which days the report covers. For a daily report, "not found" means there is no report for that day.
+# Returns 0 when it worked, 1 when it failed and 2 when GitHub sent no report, as it does for a day without data.
 fetch_report() {
   local source_id="$1" kind="$2" endpoint="$3" link magic count=0
   report_first_day=""
   report_last_day=""
-  if ! run_gh "$work/report" "$endpoint" \
-    --jq '(.download_links // [])[], "#first \(.report_start_day // .report_day // "")", "#last \(.report_end_day // .report_day // "")"'; then
+  if ! run_gh "$work/report" "$endpoint" --jq "$REPORT_FILTER"; then
     if [ "${4:-}" = daily ] && [ "$last_http" = 404 ]; then
       add_status "$source_id" skipped 0 404 "No report for this day." "$endpoint"
     else
       add_status "$source_id" failed 0 "$last_http" "$last_error" "$endpoint"
     fi
     return 1
+  fi
+  if grep -q '^#none$' "$work/report"; then
+    case "$endpoint" in
+      *day=*) add_status "$source_id" skipped 0 200 "No report for this day." "$endpoint" ;;
+      *) add_status "$source_id" skipped 0 200 "No report yet." "$endpoint" ;;
+    esac
+    return 2
   fi
   report_first_day=$(control_lines "$work/report" first | head -n 1)
   report_last_day=$(control_lines "$work/report" last | head -n 1)
@@ -730,6 +905,11 @@ REPORT_LIST_FILTER='(.usage_report_exports // [])[] | select(.report_type == "ai
 
 REPORT_STATUS_FILTER='"#status \(.status // "")", ((.download_urls // [])[])'
 
+# The links and days of a usage metrics report. On a day without data GitHub sends an empty text, not a report.
+REPORT_FILTER='if type == "object" then (.download_links // [])[],
+    "#first \(.report_start_day // .report_day // "")", "#last \(.report_end_day // .report_day // "")"
+  else "#none" end'
+
 TEAM_MEMBERS_FILTER='.[] | {login: (.login // .user.login)} | select(.login != null) | wrap("team-member")'
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -808,6 +988,7 @@ collect_budgets() {
   begin_step "Budgets"
   if fetch_pages budgets "$endpoint" "$BUDGET_FILTER" && [ "$with_users" = yes ]; then
     cp "$work/control" "$work/budget-ids"
+    step_total=$((1 + $(grep -c '^#users ' "$work/budget-ids")))
     while IFS= read -r line <&3; do
       budget_id="${line#\#users }"
       case "$budget_id" in
@@ -831,7 +1012,7 @@ collect_billing() {
       usage-summary) label="Billing summary per month"; path="usage/summary"; filter="$USAGE_SUMMARY_FILTER" ;;
       *) label="Daily GitHub Copilot charges"; path="usage"; filter="$BILLING_USAGE_FILTER" ;;
     esac
-    begin_step "$label"
+    begin_step "$label" "$months"
     for month in $month_keys; do
       context_month="$month"
       year="${month%-*}"
@@ -847,9 +1028,10 @@ collect_billing() {
 }
 
 # Reads the latest 28-day activity report and, with --daily-metrics, the daily report of every earlier day in the
-# chosen months. It goes back one day at a time and stops after three days in a row without a report.
+# chosen months. It goes back one day at a time and stops after three failed days in a row, or after a week in a row
+# of days without data.
 collect_reports() {
-  local source_id="$1" base="$2" daily_name="$3" latest_name="$4" label="$5" day first_day failures=0
+  local source_id="$1" base="$2" daily_name="$3" latest_name="$4" label="$5" day first_day failures=0 empty_days=0
   begin_step "$label"
   fetch_report "$source_id" "$source_id" "$base/$latest_name/latest"
   if [ -z "$latest_report_day" ]; then
@@ -862,15 +1044,24 @@ collect_reports() {
     fi
     day=$(shift_day "$day" -1)
     first_day=$(metrics_start_day)
+    step_total=$(($(day_number "$day") - $(day_number "$first_day") + 2))
     while ! [[ "$day" < "$first_day" ]]; do
-      if fetch_report "$source_id" "$source_id" "$base/$daily_name?day=$day" daily; then
-        failures=0
-      else
-        failures=$((failures + 1))
-        if [ "$failures" -ge 3 ] || no_access_yet; then
-          break
-        fi
-      fi
+      fetch_report "$source_id" "$source_id" "$base/$daily_name?day=$day" daily
+      case $? in
+        0) failures=0; empty_days=0 ;;
+        2)
+          empty_days=$((empty_days + 1))
+          if [ "$empty_days" -ge 7 ]; then
+            break
+          fi
+          ;;
+        *)
+          failures=$((failures + 1))
+          if [ "$failures" -ge 3 ] || no_access_yet; then
+            break
+          fi
+          ;;
+      esac
       day=$(shift_day "$day" -1)
     done
   fi
@@ -878,7 +1069,7 @@ collect_reports() {
 }
 
 collect_metrics() {
-  local base="$1" level="$2" day
+  local base="$1" level="$2" day tries=0
   latest_report_day=""
   if wants user-metrics; then
     collect_reports user-metrics "$base" users-1-day users-28-day "Activity per user"
@@ -892,14 +1083,20 @@ collect_metrics() {
     if [ -z "$day" ]; then
       day=$(shift_day "$(shift_day "$today" -1)" -1)
     fi
-    fetch_report user-teams user-teams "$base/user-teams-1-day?day=$day"
+    # The latest day with a report, at most three days back.
+    while [ "$tries" -lt 3 ]; do
+      fetch_report user-teams user-teams "$base/user-teams-1-day?day=$day"
+      [ $? -eq 2 ] || break
+      tries=$((tries + 1))
+      day=$(shift_day "$day" -1)
+    done
     end_step
   fi
 }
 
 collect_audit() {
   local endpoint="$1" topic
-  begin_step "Audit log: seat and budget changes"
+  begin_step "Audit log: seat and budget changes" 2
   for topic in copilot billing; do
     fetch audit-log "$endpoint" "$AUDIT_FILTER" --paginate --method GET \
       -f phrase="action:$topic created:>=$window_start"
@@ -916,6 +1113,7 @@ collect_teams() {
   begin_step "$3"
   if fetch teams "$endpoint" "$TEAMS_FILTER" --paginate; then
     control_lines "$work/out" team >"$work/teams"
+    step_total=$((1 + $(grep -c '' "$work/teams")))
     while IFS= read -r slug <&3; do
       case "$slug" in
         "" | *[!A-Za-z0-9_.:-]*) continue ;;
@@ -961,13 +1159,55 @@ wrap_usage_report() {
   read -r usage_lines usage_parts <"$work/count"
 }
 
+# Sets month_first, month_last and month_end: the first day of a month, its last day so far and its last day.
+month_days() {
+  month_first="$1-01"
+  month_end="$1-$(days_in_month "${1%-*}" "${1#*-}")"
+  month_last="$month_end"
+  if [[ "$month_last" > "$today" ]]; then
+    month_last="$today"
+  fi
+}
+
+# ask_usage_report BASE MONTH LIST
+# Asks GitHub to make the AI usage report of one month and adds it to the list file. Returns 0 when GitHub makes it,
+# 2 when GitHub is still making another report (it makes one at a time) and 1 when it failed.
+ask_usage_report() {
+  local base="$1" month="$2" report_id
+  month_days "$month"
+  context_month="$month"
+  if ! run_gh "$work/created" "$base" --method POST -f report_type=ai_credit -f start_date="$month_first" \
+    -f end_date="$month_last" --jq '.id // ""'; then
+    if [ "$last_http" = 409 ]; then
+      context_month=""
+      return 2
+    fi
+    add_status usage-report failed 0 "$last_http" "$last_error" "$base"
+    context_month=""
+    return 1
+  fi
+  report_id=$(head -n 1 "$work/created" | tr -d '\r')
+  case "$report_id" in
+    "" | *[!A-Za-z0-9-]*)
+      add_status usage-report failed 0 0 "GitHub did not say which report it makes." "$base"
+      context_month=""
+      return 1
+      ;;
+  esac
+  printf '%s\t%s\n' "$month" "$report_id" >>"$3"
+  context_month=""
+  return 0
+}
+
 # Finds the AI usage report of every chosen month on the billing page (GitHub keeps them for 31 days), or asks GitHub
 # to make one. GitHub makes them while the other data is read, and read_usage_reports downloads them at the end.
+# GitHub makes one report at a time, so the months it cannot take yet wait in usage-later.
 request_usage_reports() {
-  local base="$1" month first last month_end found report_id summary ready=0 asked=0
+  local base="$1" month found summary ready=0 asked=0 later=0 busy=no
   : >"$work/usage-reports"
+  : >"$work/usage-later"
   report_requested_at=$(date +%s)
-  begin_step "AI usage report"
+  begin_step "AI usage report: find or ask for"
   if ! run_gh "$work/report-list" "$base" --jq "$REPORT_LIST_FILTER"; then
     add_status usage-report failed 0 "$last_http" "$last_error" "$base"
     end_step
@@ -975,14 +1215,9 @@ request_usage_reports() {
   fi
   control_lines "$work/report-list" report >"$work/report-list.tsv"
   for month in $month_keys; do
-    first="$month-01"
-    month_end="$month-$(days_in_month "${month%-*}" "${month#*-}")"
-    last="$month_end"
-    if [[ "$last" > "$today" ]]; then
-      last="$today"
-    fi
+    month_days "$month"
     # A finished report first, then one GitHub is still making. It must cover the whole month and no other month.
-    found=$(awk -F '\t' -v first="$first" -v last="$last" -v month_end="$month_end" '
+    found=$(awk -F '\t' -v first="$month_first" -v last="$month_last" -v month_end="$month_end" '
       $2 == first && ($3 "") >= last && ($3 "") <= month_end {
         if ($4 == "completed") { print $1; done = 1; exit }
         if ($4 == "processing" && pick == "") pick = $1
@@ -997,35 +1232,39 @@ request_usage_reports() {
         continue
         ;;
     esac
-    context_month="$month"
-    if run_gh "$work/created" "$base" --method POST -f report_type=ai_credit -f start_date="$first" \
-      -f end_date="$last" --jq '.id // ""'; then
-      report_id=$(head -n 1 "$work/created" | tr -d '\r')
-      case "$report_id" in
-        "" | *[!A-Za-z0-9-]*)
-          add_status usage-report failed 0 0 "GitHub did not say which report it makes." "$base"
-          ;;
-        *)
-          printf '%s\t%s\n' "$month" "$report_id" >>"$work/usage-reports"
-          asked=$((asked + 1))
-          ;;
-      esac
-    else
-      add_status usage-report failed 0 "$last_http" "$last_error" "$base"
-      if no_access_yet; then
-        context_month=""
-        break
-      fi
+    if [ "$busy" = yes ]; then
+      printf '%s\n' "$month" >>"$work/usage-later"
+      later=$((later + 1))
+      continue
     fi
-    context_month=""
+    ask_usage_report "$base" "$month" "$work/usage-reports"
+    case $? in
+      0) asked=$((asked + 1)) ;;
+      2)
+        busy="yes"
+        printf '%s\n' "$month" >>"$work/usage-later"
+        later=$((later + 1))
+        ;;
+      *)
+        if no_access_yet; then
+          break
+        fi
+        ;;
+    esac
   done
-  if [ ! -s "$work/usage-reports" ]; then
+  if [ ! -s "$work/usage-reports" ] && [ ! -s "$work/usage-later" ]; then
     end_step
     return 1
   fi
+  end_progress
   summary="$ready found, $asked asked for"
+  if [ "$later" -gt 0 ]; then
+    summary="$summary, $later to ask for later"
+  fi
   if [ "$step_failed" -gt 0 ]; then
     say "${yellow}$summary, $step_failed failed${reset} ${dim}$(failure_text)${reset}"
+  elif [ "$later" -gt 0 ]; then
+    say "${green}$summary${reset} ${dim}(GitHub makes one at a time)${reset}"
   else
     say "${green}$summary${reset} ${dim}(read at the end)${reset}"
   fi
@@ -1074,16 +1313,17 @@ download_usage_report() {
   return 0
 }
 
-# Waits until GitHub has made the AI usage reports, at most REPORT_WAIT_SECONDS after they were asked for, and
-# downloads them. A report that is not ready by then is reported, and the next run uses it.
+# Waits until GitHub has made the AI usage reports and downloads them. When they are done, it asks for the months that
+# waited their turn. It waits at most REPORT_WAIT_SECONDS after the last report was asked for. A report that is not
+# ready by then is reported, and the next run uses it.
 read_usage_reports() {
   local base="$1" month report_id state deadline waiting=no
-  if [ ! -s "$work/usage-reports" ]; then
+  if [ ! -s "$work/usage-reports" ] && [ ! -s "$work/usage-later" ]; then
     return 0
   fi
   deadline=$((report_requested_at + REPORT_WAIT_SECONDS))
   cp "$work/usage-reports" "$work/usage-pending"
-  begin_step "AI usage report"
+  begin_step "AI usage report: download" $(($(grep -c '' "$work/usage-reports") + $(grep -c '' "$work/usage-later")))
   while :; do
     : >"$work/usage-waiting"
     while IFS="$(printf '\t')" read -r month report_id <&3; do
@@ -1100,7 +1340,24 @@ read_usage_reports() {
       esac
     done 3<"$work/usage-pending"
     context_month=""
-    if [ ! -s "$work/usage-waiting" ]; then
+    # GitHub makes one report at a time. When it has made the ones asked for, ask for the next month.
+    if [ ! -s "$work/usage-waiting" ] && [ -s "$work/usage-later" ]; then
+      month=$(head -n 1 "$work/usage-later")
+      ask_usage_report "$base" "$month" "$work/usage-waiting"
+      case $? in
+        2) ;;
+        0)
+          deadline=$(($(date +%s) + REPORT_WAIT_SECONDS))
+          sed '1d' "$work/usage-later" >"$work/usage-next"
+          mv -f "$work/usage-next" "$work/usage-later"
+          ;;
+        *)
+          sed '1d' "$work/usage-later" >"$work/usage-next"
+          mv -f "$work/usage-next" "$work/usage-later"
+          ;;
+      esac
+    fi
+    if [ ! -s "$work/usage-waiting" ] && [ ! -s "$work/usage-later" ]; then
       break
     fi
     if [ "$(date +%s)" -ge "$deadline" ]; then
@@ -1110,15 +1367,26 @@ read_usage_reports() {
           "GitHub is still making the report. Run the script again in a few minutes. It uses the same report." \
           "$base/$report_id"
       done 3<"$work/usage-waiting"
+      while IFS= read -r month <&3; do
+        context_month="$month"
+        add_status usage-report failed 0 0 \
+          "GitHub makes one report at a time and had no time for this month. Run the script again in a few minutes." \
+          "$base"
+      done 3<"$work/usage-later"
       context_month=""
       break
     fi
-    if [ "$waiting" = no ]; then
-      printf '%s(GitHub is making it, this takes a few minutes)%s ' "$dim" "$reset"
-      waiting="yes"
+    if [ "$progress" = yes ]; then
+      progress_note="GitHub makes it, up to $(((deadline - $(date +%s) + 59) / 60)) min"
+    else
+      if [ "$waiting" = no ]; then
+        printf '%s(GitHub is making it, this takes a few minutes for each month)%s ' "$dim" "$reset"
+        waiting="yes"
+      fi
+      printf '%s.%s' "$dim" "$reset"
     fi
-    printf '%s.%s' "$dim" "$reset"
-    sleep "$REPORT_POLL_SECONDS"
+    pause "$REPORT_POLL_SECONDS"
+    progress_note=""
     mv -f "$work/usage-waiting" "$work/usage-pending"
   done
   if [ "$waiting" = yes ]; then
@@ -1406,7 +1674,7 @@ ask_options() {
       *)
         say ""
         say "This script can get the AI usage report too. Then this one file is all you need in the app."
-        note "If there is no recent report, GitHub makes one, as the billing page does. This takes a few minutes."
+        note "If there is no recent report, GitHub makes one, as the billing page does. This takes a few minutes for each month."
         if ! ask_yes_no "Get the AI usage report?" y; then
           skip_sources="$skip_sources usage-report"
         fi
@@ -1700,6 +1968,7 @@ print_summary() {
 }
 
 cleanup() {
+  stop_ticker
   if [ -n "$work" ] && [ -d "$work" ]; then
     rm -rf "$work"
   fi
@@ -1736,10 +2005,18 @@ main() {
   umask 077
   work=$(mktemp -d "${TMPDIR:-/tmp}/usage-lens.XXXXXX") || fail "Could not create a temporary folder."
   trap cleanup EXIT
-  trap 'say ""; say "Stopped. Nothing was saved."; exit 130' INT TERM
+  trap 'stop_ticker; say ""; say "Stopped. Nothing was saved."; exit 130' INT TERM
   : >"$work/records.ndjson"
   : >"$work/sources.ndjson"
   : >"$work/status.tsv"
+  # In a terminal the step line moves while the step works. fd 4 keeps the terminal for it.
+  exec 4>&1
+  if [ -t 1 ] && [ "${TERM:-}" != "dumb" ]; then
+    progress="yes"
+    if sleep 0.01 2>/dev/null; then
+      tick_seconds=0.2
+    fi
+  fi
   started_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
   today=$(date -u +%Y-%m-%d)
 

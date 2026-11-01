@@ -7,6 +7,7 @@ Pages, in the order of the side menu:
 - [Start page](#start-page)
 - [Overview](#overview)
 - [Usage and pool](#usage-and-pool)
+- [Budgets](#budgets)
 - [Recommendations](#recommendations)
 - [Licenses](#licenses)
 - [Users](#users)
@@ -38,6 +39,14 @@ The short answer for managers. It shows a headline verdict, the key figures with
 How the included credits are spent. It shows usage over time, how fast each month's pool runs out, a projected month end, budget tracking and a plain explanation of how billing works.
 
 ![Usage and pool page: included credits burn-down per month](screenshots/usage-and-pool.png)
+
+## Budgets
+
+The Limit map shows the order GitHub checks limits, from each user's limit at the bottom to the enterprise spending limit at the top. Select a user to mark the limits that hold them. The numbered steps and moving line show the path, and the side panel explains each limit.
+
+![Budgets page with the full Limit map](screenshots/budgets.png)
+
+![Limit map with a selected user and the limits that hold them](screenshots/budgets-selected.png)
 
 ## Recommendations
 

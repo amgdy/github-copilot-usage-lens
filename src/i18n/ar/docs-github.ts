@@ -30,9 +30,11 @@ const arabic: Dict = {
   'Gap = amount at GitHub − amount in the report, for each month': 'الفرق = المبلغ في GitHub − المبلغ في التقرير، لكل شهر',
   'GitHub billing for a month is the AI credit usage report of GitHub billing, or else the AI credit lines of the billing usage summary.':
     'فوترة GitHub لشهر ما هي تقرير استخدام أرصدة الذكاء الاصطناعي في فوترة GitHub، وإلا فأسطر أرصدة الذكاء الاصطناعي في ملخص استخدام الفوترة.',
+  'An organization file is compared with the report rows of its organizations only. If none match, it is marked Not in the report instead of being compared with every row. An enterprise file is compared with every row.':
+    'تُقارن بيانات المؤسسة بصفوف التقرير الخاصة بمؤسساتها فقط. وإذا لم تطابق أي مؤسسة، فتُعلّم بأنها غير موجودة في التقرير بدلًا من مقارنتها بكل الصفوف. أما ملف المؤسسة الكبرى فيُقارن بكل الصفوف.',
   'Same means the amounts agree. Report has less and Report has more mean they do not.': '«متطابق» يعني أن المبالغ متفقة. و«التقرير أقل» و«التقرير أكثر» يعنيان أنها غير متفقة.',
-  'Month not over: the month had not ended when the data was collected. Part of the month: the report misses more than 3 days at the start or end of the month. Not in the report: the report has no days in the month. No GitHub billing: the file has no complete billing for the month.':
-    '«الشهر لم ينتهِ»: لم يكن الشهر قد انتهى عند جمع البيانات. «جزء من الشهر»: يفتقد التقرير أكثر من 3 أيام في بداية الشهر أو نهايته. «غير موجود في التقرير»: لا يحتوي التقرير على أي يوم من الشهر. «لا توجد فوترة GitHub»: لا يحتوي الملف على فوترة كاملة للشهر.',
+  'Month not over: the month had not ended when the data was collected. Part of the month: the report misses more than 3 days at the start or end of the month. Not in the report: the report has no days in the month or no matching organization. No GitHub billing: the file has no complete billing for the month.':
+    '«الشهر لم ينتهِ»: لم يكن الشهر قد انتهى عند جمع البيانات. «جزء من الشهر»: يفتقد التقرير أكثر من 3 أيام في بداية الشهر أو نهايته. «غير موجود في التقرير»: لا يحتوي التقرير على أيام من الشهر أو لا توجد مؤسسة مطابقة. «لا توجد فوترة GitHub»: لا يحتوي الملف على فوترة كاملة للشهر.',
   'For September the report shows $9,000 of usage and GitHub shows $10,000. The gap of $1,000 is more than 2%, so the result is Report has less.':
     'في سبتمبر يُظهر التقرير استخدامًا بقيمة $9,000 وتُظهر GitHub مبلغ $10,000. الفرق $1,000 أكبر من 2%، لذا النتيجة «التقرير أقل».',
 
@@ -129,6 +131,7 @@ const arabic: Dict = {
   'A person is active on the shared days when the time between their first and last day of activity at GitHub covers part of them.':
     'يُعدّ الشخص نشطًا في الأيام المشتركة عندما تغطي الفترة بين أول يوم وآخر يوم من نشاطه في GitHub جزءًا منها.',
   'Logins are matched without regard to upper and lower case.': 'تُطابق أسماء المستخدمين دون اعتبار للأحرف الكبيرة والصغيرة.',
+  'It uses every report row in the scope of the GitHub data file, not your filters.': 'يستخدم كل صفوف التقرير ضمن نطاق ملف بيانات GitHub، لا عوامل التصفية.',
   'It uses every row you loaded, not the filters.': 'يستخدم كل الصفوف التي حمّلتها، لا عوامل التصفية.',
   'Only the first and the last day of activity are known, so a person who was active only before and after the shared days is counted too. This is rare.':
     'لا يُعرف إلا أول يوم وآخر يوم من النشاط، لذا يُحسب أيضًا الشخص الذي كان نشطًا قبل الأيام المشتركة وبعدها فقط. وهذا نادر.',

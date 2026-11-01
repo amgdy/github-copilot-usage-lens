@@ -877,7 +877,7 @@ export const RECOMMENDATIONS_DOCS: MetricDoc[] = [
     formula: 'Gap = amount at GitHub − amount in the report, for each full month',
     steps: [
       'The AI credit billing of a month is the AI credit usage report of GitHub billing, or else the AI credit lines of the billing usage summary.',
-      'An organization file is compared with the report rows of its organizations only. An enterprise file is compared with every row.',
+      'An organization file is compared with the report rows of its organizations only. If none match, it is not compared with every row. An enterprise file is compared with every row.',
       'Months that were not over when the data was collected, months the report covers only in part and months the report does not cover are left out. A report may miss up to 3 days at the start or end of a month and still count as covering it.',
       'Usage is compared first, then the billed amount. Amounts within 2%, or within $1, count as the same.',
       'Each month that differs gets an evidence line. Severity is Medium when the report has less than GitHub in any month, and Low when it only has more.',

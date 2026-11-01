@@ -211,7 +211,7 @@ function MonthCheckCard({ github }: { github: GitHubData }) {
     <Card
       title={t('Usage report and GitHub billing')}
       calc="github-month-check"
-      subtitle={t('Whether each month of the usage report has the same amounts as GitHub billing. It uses every row you loaded, not the filters.')}
+      subtitle={t('Whether each month of the usage report has the same amounts as GitHub billing. It uses every report row in the scope of the GitHub data file, not your filters.')}
       footer={<DocLinks topic="billing" title={t('Learn more')} limit={2} compact />}
     >
       <div className="space-y-3">
