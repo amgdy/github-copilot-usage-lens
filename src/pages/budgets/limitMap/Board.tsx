@@ -74,7 +74,7 @@ function TopHeader({ board, selected, choose }: { board: LimitBoard; selected: b
             <LimitLine lane={{ gauge: top.wall }} />
           </>
         ) : (
-          <span className="block text-xs text-fg-muted">{top.known ? t('No spending limit is set here.') : t('The file has no full budget list, so this limit is not known.')}</span>
+          <span className="block text-xs text-fg-muted">{top.limits.length > 0 ? t('Only alert budgets are set here. They do not stop usage.') : top.known ? t('No spending limit is set here.') : t('The file has no full budget list, so this limit is not known.')}</span>
         )}
         {others.length > 0 ? (
           <span className="num block text-[11px] text-fg-subtle">
@@ -84,7 +84,7 @@ function TopHeader({ board, selected, choose }: { board: LimitBoard; selected: b
       </span>
       <span className="block sm:text-end">
         <span className="eyebrow block text-fg-subtle">{t('Room left')}</span>
-        <span className="num block font-display text-2xl font-semibold leading-tight">{top.wall === null ? (top.known ? t('No limit') : t('Not known')) : roomText(top.room)}</span>
+        <span className="num block font-display text-2xl font-semibold leading-tight">{top.wall === null ? (top.limits.length > 0 ? t('Alerts only') : top.known ? t('No limit') : t('Not known')) : roomText(top.room)}</span>
         {board.everyone !== null ? (
           <span className="num block text-[11px] text-fg-muted">
             <WithIcon Icon={KIND_ICONS.everyone}>{t('Each person: {amount}', { amount: money(board.everyone.amount) })} · {kindLabel('everyone')}</WithIcon>
@@ -107,8 +107,9 @@ function InsideStrip({ top, lanes }: { top: LimitTop; lanes: LimitLane[] }) {
       <div className="relative py-1">
         <div className="flex h-3 gap-px overflow-hidden rounded-xs bg-surface-3" aria-hidden>
           {parts.map((lane) => {
-            // The smallest limit sets the width, so the fill, the color and the share come from it too.
-            const row = lane.limits[0];
+            // The smallest stopping limit sets the width, so the fill, color and share come from it too.
+            const row = lane.limits.find((limit) => limit.budget.stopsUsage && limit.budget.amount === lane.capacity);
+            if (row === undefined) return null;
             const capacity = lane.capacity ?? 0;
             const used = row.budget.consumed ?? 0;
             const fill = Math.min(1, Math.max(0, used / capacity));
@@ -173,7 +174,7 @@ function Lane({ board, laneIndex, lane, shares, day, target, focus, highlight, o
           </>
         ) : lane.kind !== 'top' ? (
           <span className="block text-[11px] text-fg-muted">
-            {lane.kind === 'unclear' ? t('GitHub picks one seat organization each billing cycle.') : lane.countedByTop ? t('No spending limit of its own') : t('Its spending limit is set in the enterprise and is not in this file.')}
+            {lane.limits.length > 0 ? t('Only alert budgets are set here. They do not stop usage.') : lane.kind === 'unclear' ? t('GitHub picks one seat organization each billing cycle.') : lane.countedByTop ? t('No spending limit of its own') : t('Its spending limit is set in the enterprise and is not in this file.')}
           </span>
         ) : null}
         {lane.kind !== 'unclear' && (lane.countedByTop || own !== null) ? (

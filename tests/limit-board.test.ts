@@ -42,6 +42,41 @@ const renderDetails = (board: LimitBoard, store: Awaited<ReturnType<typeof store
   renderToStaticMarkup(createElement(Details, { board, target, shares: sharesOn(board, day), day, store, userIds: new Map<string, number>(), choose: () => {} }));
 
 describe('the limit map', () => {
+  it('leaves report-only users from other organizations outside the file scope', async () => {
+    const store = await storeOf([...usageDays('mona', 1, 10), ...usageDays('hubot', 1, 10, { org: 'octo-labs' })]);
+    const collection = collectionOf([forOrganization('octo-apps', 100, 20), everyone(50)], { scope: 'organization', enterprise: null, organizations: ['octo-apps'] });
+    const map = budgetMap(collection, store);
+    const board = limitBoard(collection, store, map);
+    expect(board.users.map((user) => user.login)).toEqual(['mona']);
+    expect(board.held).toEqual(map.held);
+    const unrelated = collectionOf([everyone(50)], { scope: 'organization', enterprise: null, organizations: ['other'] });
+    expect(limitBoard(unrelated, store, budgetMap(unrelated, store)).users).toEqual([]);
+  });
+
+  it('keeps alert thresholds visible without using them as spending walls', async () => {
+    const store = await storeOf(usageDays('mona', 1, 10));
+    const collection = collectionOf([
+      budget('alert', { budget_amount: 100, consumed_amount: 100, prevent_further_usage: false }),
+      budget('stop', { budget_amount: 1000, consumed_amount: 200 }),
+      budget('org-alert', { budget_scope: 'organization', budget_entity_name: 'octo-apps', budget_amount: 10, consumed_amount: 10, prevent_further_usage: false }),
+      seat('mona', 'octo-apps'),
+    ]);
+    const board = limitBoard(collection, store, budgetMap(collection, store));
+    expect(board.top.limits).toHaveLength(2);
+    expect(board.top.wall?.budget.id).toBe('stop');
+    expect(board.top.capacity).toBe(1000);
+    expect(board.top.room).toBe(800);
+    const lane = board.lanes.find((entry) => entry.name === 'octo-apps')!;
+    expect(lane.limits).toHaveLength(1);
+    expect(lane.gauge).toBeNull();
+    expect(lane.capacity).toBeNull();
+    expect(lane.room).toBe(800);
+    expect(lane.reachedFirst).toBe('top');
+
+    const alertsOnly = collectionOf([budget('alert', { consumed_amount: 500, prevent_further_usage: false })]);
+    expect(limitBoard(alertsOnly, store, budgetMap(alertsOnly, store)).top).toMatchObject({ wall: null, room: null, capacity: null });
+  });
+
   it('puts each user in the lane of the spending limit GitHub checks, inside the enterprise limit', async () => {
     const store = await storeOf([...usageDays('mona', 1, 10), ...usageDays('hubot', 1, 2), ...usageDays('octocat', 1, 4, { costCenter: 'Mobile' })]);
     const collection = collectionOf([
@@ -378,7 +413,8 @@ describe('the limit map', () => {
     expect(board.held).toEqual(map.held);
     expect(board.users.length).toBeGreaterThan(50);
     expect(board.top.scope).toBe('enterprise');
-    expect(board.top.wall).not.toBeNull();
+    expect(board.top.limits.every((row) => !row.budget.stopsUsage)).toBe(true);
+    expect(board.top.wall).toBeNull();
     expect(board.lanes.filter((lane) => lane.kind === 'cost_center').length).toBeGreaterThan(0);
     expect(board.lanes.filter((lane) => lane.kind === 'organization').length).toBeGreaterThan(0);
     expect(board.users.filter((user) => user.kind === 'own')).toHaveLength(2);

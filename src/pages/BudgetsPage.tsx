@@ -1,8 +1,8 @@
 import { HandCoins } from 'lucide-react';
 import { useMemo } from 'react';
 import { Callout, Card, DocLinks, EmptyState, PageHeader, Section } from '../components/ui';
-import { t } from '../i18n';
-import { budgetMap, budgetOverview } from '../lib/collection';
+import { msg, t } from '../i18n';
+import { budgetMap, budgetOverview, sourceComplete } from '../lib/collection';
 import { useAnalysis } from '../state/analysis';
 import { navigate } from '../state/router';
 import { BudgetChangesCard } from './budgets/BudgetChangesCard';
@@ -16,7 +16,7 @@ import { LimitMapCard } from './budgets/limitMap/LimitMapCard';
 import { HowToCollect } from './data/GitHubDataCard';
 import { fromGitHub, monthName } from './githubText';
 
-const INTRO = 'The budgets for GitHub Copilot that are set at GitHub: how full each one is, which run out this month, and which users are stopped.';
+const INTRO = msg('The budgets for GitHub Copilot that are set at GitHub: how full each one is, which run out this month, and which users are stopped.');
 
 function NoBudgetData() {
   return (
@@ -40,7 +40,7 @@ export default function BudgetsPage() {
   const { github, store } = useAnalysis();
   const overview = useMemo(() => (github ? budgetOverview(github.collection, store) : null), [github, store]);
   const budgetsAsked = github?.collection.sources.some((source) => source.id === 'budgets' && source.status !== 'skipped') ?? false;
-  const map = useMemo(() => (github && overview && overview.total > 0 ? budgetMap(github.collection, store) : null), [github, overview, store]);
+  const map = useMemo(() => (github && overview && overview.total > 0 && (github.collection.header.scope === 'enterprise' || github.collection.header.organizations.length === 1) ? budgetMap(github.collection, store) : null), [github, overview, store]);
 
   if (github === null || overview === null || !budgetsAsked) {
     return (
@@ -56,7 +56,7 @@ export default function BudgetsPage() {
     <div className="space-y-6">
       <PageHeader title={t('Budgets')} description={`${t(INTRO)} ${t('Month: {month}.', { month: monthName(overview.month) })}`} />
       <p className="text-xs text-fg-muted">{source}</p>
-      {overview.total === 0 ? (
+      {overview.total === 0 && sourceComplete(github.collection.sources, 'budgets') ? (
         <Callout tone="warn" title={t('No budget for GitHub Copilot')}>
           {t('Nothing limits the amount billed on top of seats. Set a budget at GitHub to get alerts or to stop usage at a set amount.')}
         </Callout>

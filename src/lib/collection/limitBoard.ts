@@ -3,7 +3,7 @@ import { BLANK } from '../types';
 import { daysInMonth, monthEndDay, monthStartDay } from '../utils/date';
 import type { BudgetMap } from './budgetMap';
 import { budgetLevel, collectionMonth, type BudgetLevel, type BudgetRow } from './budgets';
-import { sourceComplete } from './derive';
+import { reportOrganizations, sourceComplete } from './derive';
 import { costCenterOf, limitIndex, resolveUserLimit, type ReplacedLimit, type UserLimitKind } from './limits';
 import type { Collection, GitHubBudget } from './types';
 
@@ -114,8 +114,9 @@ export interface LimitBoard {
 /** Amount left before a spending limit is reached. Null when GitHub gave no amount used. */
 export const roomOf = (row: BudgetRow): number | null => (row.budget.consumed === null ? null : row.budget.amount - row.budget.consumed);
 
-/** The limit reached first: the least room left, the smaller amount on a tie. Without amounts used, the smallest. */
+/** The stopping limit reached first: the least room left, the smaller amount on a tie. Without amounts used, the smallest. */
 function bindingOf(limits: BudgetRow[]): BudgetRow | null {
+  limits = limits.filter((row) => row.budget.stopsUsage);
   let best: BudgetRow | null = null;
   let bestRoom = Number.POSITIVE_INFINITY;
   for (const row of limits) {
@@ -163,9 +164,11 @@ function monthRows(collection: Collection, store: DataStore): MonthRows {
   const keyOf = users.map((login) => (login === BLANK ? '' : login.toLowerCase()));
   const byLogin = new Map<string, MonthEntry>();
   const latest = new Map<string, number>();
+  const allowed = reportOrganizations(collection, store);
+  if (collection.header.scope === 'organization' && allowed === null) return { lastDay: 0, byLogin };
   for (let i = 0; i < store.n; i++) {
     const day = store.day[i];
-    if (day < start || day > end) continue;
+    if (day < start || day > end || (allowed !== null && allowed[store.org[i]] === 0)) continue;
     const key = keyOf[store.user[i]];
     if (key === '') continue;
     let entry = byLogin.get(key);
@@ -245,8 +248,8 @@ export function limitBoard(collection: Collection, store: DataStore, map: Budget
     if (lane === undefined) {
       const gauge = bindingOf(limits);
       const room = kind === 'unclear' ? { room: null, reachedFirst: null } : laneRoom(gauge, countedByTop ? topRoom : null);
-      // Limits are sorted smallest first, so the first one is the most the lane can be billed.
-      lane = { kind, name, limits, gauge, capacity: limits[0]?.budget.amount ?? null, ...room, countedByTop, perUser, poolCapped, seats, members: [], usedUp: 0 };
+      // Limits are sorted smallest first; only those that stop usage cap the billed amount.
+      lane = { kind, name, limits, gauge, capacity: limits.find((row) => row.budget.stopsUsage)?.budget.amount ?? null, ...room, countedByTop, perUser, poolCapped, seats, members: [], usedUp: 0 };
       laneByKey.set(key, lane);
     }
     return lane;
@@ -344,7 +347,7 @@ export function limitBoard(collection: Collection, store: DataStore, map: Budget
     lane.usedUp = lane.members.filter((userIndex) => users[userIndex].level === 'used-up').length;
   }
 
-  const capacity = map.top.limits[0]?.budget.amount ?? null;
+  const capacity = map.top.limits.find((row) => row.budget.stopsUsage)?.budget.amount ?? null;
   const inside = lanes.reduce((total, lane) => total + (lane.countedByTop ? (lane.capacity ?? 0) : 0), 0);
   const cumulative = new Float32Array(users.length * month.lastDay);
   dailyOf.forEach((daily, userIndex) => {

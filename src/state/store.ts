@@ -104,6 +104,8 @@ interface AppState {
   setPickingData: (picking: boolean) => void;
   loading: LoadingState | null;
   setLoading: (loading: LoadingState | null) => void;
+  /** Changes when data is closed, so unfinished reads cannot restore it. */
+  dataVersion: number;
   error: string | null;
   setError: (error: string | null) => void;
 
@@ -155,6 +157,7 @@ export const useApp = create<AppState>((set, get) => ({
       collection: null,
       pickingData: false,
       loading: null,
+      dataVersion: get().dataVersion + 1,
       error: null,
       filters: emptyFilters(),
       selectedUser: null,
@@ -168,6 +171,7 @@ export const useApp = create<AppState>((set, get) => ({
   setPickingData: (pickingData) => set({ pickingData }),
   loading: null,
   setLoading: (loading) => set({ loading }),
+  dataVersion: 0,
   error: null,
   setError: (error) => set({ error }),
 

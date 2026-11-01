@@ -102,8 +102,10 @@ const arabic: Dict = {
     'كل حدود أرصدة الذكاء الاصطناعي في GitHub Copilot في صورة واحدة. الإطار الخارجي هو حد الإنفاق كله للمؤسسة الكبرى أو المؤسسة. كل صف داخله حد إنفاق واحد مع الأشخاص الذين يضبطهم. وكل مربع شخص واحد، يمتلئ بقدر ما استخدم من حد المستخدم.',
   'Room left in a row = the smaller of its own room and the room in the frame; square fill = amount used ÷ user limit; limits inside = sum of the row limits ÷ frame limit':
     'المتبقي في صف = الأصغر بين المتبقي في حده والمتبقي في الإطار؛ امتلاء المربع = المبلغ المستخدَم ÷ حد المستخدم؛ الحدود الداخلية = مجموع حدود الصفوف ÷ حد الإطار',
-  'The frame is the enterprise limit, or the organization limit in an organization file. Its color follows how full it is. A dashed frame means no limit was found for all spending.':
-    'الإطار هو حد المؤسسة الكبرى، أو حد المؤسسة في ملف مؤسسة. يتبع لونه مدى امتلائه. والإطار المتقطع يعني أنه لم يُعثر على حد للإنفاق كله.',
+  'The frame is the enterprise limit, or the organization limit in an organization file. Its color follows how full it is. A dashed frame means no stopping limit was found. Alert-only budgets stay visible but do not reduce room left.':
+    'الإطار هو حد المؤسسة الكبرى، أو حد المؤسسة في ملف مؤسسة. يتبع لونه مدى امتلائه. والإطار المتقطع يعني أنه لم يُعثر على حد يوقف الاستخدام. تبقى ميزانيات التنبيه فقط ظاهرة لكنها لا تقلل المبلغ المتبقي.',
+  'Only stopping budgets count toward the frame, row capacity and room left. Alert-only budgets are not walls.':
+    'تُحتسب الميزانيات التي توقف الاستخدام فقط في الإطار وسعة الصف والمبلغ المتبقي. ميزانيات التنبيه فقط ليست حواجز.',
   'A user goes in one row: the cost center row when they are in a cost center, else the row of their only seat organization when it has a limit, else the row of users held only by the frame. Users with seats in several organizations, or no seat, go in a row of their own, because GitHub picks one organization each billing cycle.':
     'يوضع كل مستخدم في صف واحد: صف مركز التكلفة إذا كان في مركز تكلفة، وإلا صف مؤسسة مقعده الوحيدة إذا كان لها حد، وإلا صف المستخدمين الذين لا يضبطهم إلا الإطار. ويوضع المستخدمون الذين لهم مقاعد في عدة مؤسسات، أو لا مقعد لهم، في صف خاص بهم، لأن GitHub يختار مؤسسة واحدة في كل دورة فوترة.',
   'A row shows its own limit, the room left and the user limit of each person. When the frame has less room than the row, the frame is reached first and the row says so.':
@@ -157,6 +159,8 @@ const arabic: Dict = {
   'A budget for the whole enterprise may still cover this usage.': 'قد تغطي ميزانية المؤسسة كلها هذا الاستخدام.',
   'The list is shown only when the budgets were read in full, so a failed read is not taken for a missing budget.':
     'تظهر القائمة فقط عندما تُقرأ الميزانيات كاملة، حتى لا تُعدّ القراءة الفاشلة ميزانيةً مفقودة.',
+  'When a billing row has no organization or cost center, the file cannot support this list. The app asks for a billing split instead of claiming that no budget applies.':
+    'عندما لا يحدد صف الفوترة مؤسسة أو مركز تكلفة، لا يدعم الملف هذه القائمة. يطلب التطبيق تفصيل الفوترة بدلًا من القول إنه لا توجد ميزانية سارية.',
   'northwind-data has $420 billed this month and no budget, so it is listed.': 'لدى northwind-data مبلغ $420 مدفوع إضافيًا هذا الشهر ولا ميزانية لها، لذلك تظهر في القائمة.',
 
   // Budget changes

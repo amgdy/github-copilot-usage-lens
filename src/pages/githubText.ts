@@ -30,6 +30,7 @@ const SOURCE_NAMES: Record<string, string> = {
   budgets: msg('Budgets'),
   'cost-centers': msg('Cost centers'),
   'ai-credit-usage': msg('AI credits billed'),
+  'usage-report': msg('AI usage report'),
   'usage-summary': msg('Billing summary'),
   'billing-usage': msg('Daily charges'),
   'user-metrics': msg('Activity per user'),

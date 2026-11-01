@@ -851,7 +851,7 @@ export const RECOMMENDATIONS_DOCS: MetricDoc[] = [
     formula: 'Reached = amount used ≥ budget of the user, as GitHub showed it on the day the data was collected',
     steps: [
       'It reads the GitHub Copilot budgets for users in the GitHub data file: budgets for one user, and the amount of each user in a budget that applies to each user.',
-      'A user is listed when the amount used is at least their budget. A user with several budgets is listed once, with the budget that is the most used.',
+      'A user is listed when the amount used reaches their applicable user limit. An individual limit takes priority, then a cost center default, then the universal default. Broader user limits are replaced, not added.',
       'In a filtered view only users who are in that view are listed.',
       'The evidence shows up to 5 users, the most used first. The card names up to 12 users who are in the report, and the count includes all of them.',
       'Severity is Medium and confidence is High.',

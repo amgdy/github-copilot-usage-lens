@@ -223,6 +223,8 @@ async function newestCollection<F extends UploadFile>(files: readonly F[], readH
 }
 
 export interface UploadDeps<F extends UploadFile> {
+  /** False after the tab's data is closed. No later result may be applied. */
+  isCurrent?: () => boolean;
   /** The first SNIFF_BYTES of the file as text (unpacked when the file is gzip). */
   readHead: (file: F) => Promise<string>;
   readText: (file: F) => Promise<string>;
@@ -312,7 +314,10 @@ function takeCollection<F extends UploadFile>(read: ReadCollectionFile, dependen
  * license list first, then the license files are added.
  */
 export async function routeUploads<F extends UploadFile>(files: readonly F[], dependencies: UploadDeps<F>): Promise<UploadOutcome> {
+  const cancelled: UploadOutcome = { usageLoaded: null, notice: null };
+  const isCurrent = () => dependencies.isCurrent?.() !== false;
   const sorted = await sortUploads(files, dependencies.readHead);
+  if (!isCurrent()) return cancelled;
   const ignored = sorted.reject.map((file) => file.name);
   const extras = sorted.license.length + sorted.collection.length;
 
@@ -326,8 +331,10 @@ export async function routeUploads<F extends UploadFile>(files: readonly F[], de
   if (sorted.usage.length > 0) usageLoaded = await dependencies.loadUsage(sorted.usage);
   else if (sorted.collection.length > 0) {
     read = await readNewestCollection(sorted.collection, dependencies);
+    if (!isCurrent()) return cancelled;
     if (read.collection !== null && read.collection.usageReports.length > 0) usageLoaded = await dependencies.loadUsageReports(read.collection);
   }
+  if (!isCurrent()) return cancelled;
   const usageFromFile = read !== null && usageLoaded === true;
 
   if (extras === 0 || !dependencies.hasDataset()) {
@@ -345,7 +352,9 @@ export async function routeUploads<F extends UploadFile>(files: readonly F[], de
   let collection: CollectionFileResult | null = null;
   const fileResults: LicenseFileResult[] = [];
   if (sorted.collection.length > 0) {
-    const taken = takeCollection(read ?? (await readNewestCollection(sorted.collection, dependencies)), dependencies, usageFromFile);
+    read ??= await readNewestCollection(sorted.collection, dependencies);
+    if (!isCurrent()) return cancelled;
+    const taken = takeCollection(read, dependencies, usageFromFile);
     collection = taken.result;
     if (taken.seats !== null) {
       const applied = applySeats(state, taken.seats, dependencies.today);
@@ -355,6 +364,7 @@ export async function routeUploads<F extends UploadFile>(files: readonly F[], de
     }
   }
   const done = await importLicenseFiles(sorted.license, state, dependencies.readText, dependencies.today);
+  if (!isCurrent()) return cancelled;
   mode ??= done.mode;
   fileResults.push(...done.files);
   const saved = mode !== null ? dependencies.saveRoster(done.state) : null;

@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { Card, DataTable, type Column } from '../../components/ui';
 import { t } from '../../i18n';
 import type { BudgetOverview, UnbudgetedScope } from '../../lib/collection';
+import { dataCoverage } from '../../lib/analytics/coverage';
 import type { DataStore } from '../../lib/types';
 import { fmtUSD } from '../../lib/utils/format';
 import { drill } from '../../state/router';
@@ -32,7 +33,7 @@ export function UnbudgetedCard({ overview, store }: { overview: BudgetOverview; 
       subtitle={t('Organizations and cost centers billed in {month} that have no budget of their own.', { month: monthName(overview.month) })}
     >
       {rows === null ? (
-        <p className="text-sm text-fg-muted">{t('The budgets were not read in full, so this list cannot be made.')}</p>
+        <p className="text-sm text-fg-muted">{!dataCoverage(store).billing ? t('This file has no billing split, so the billed amount is not known.') : t('The budgets were not read in full, so this list cannot be made.')}</p>
       ) : rows.length === 0 ? (
         <p className="text-sm text-fg-muted">{t('Every organization and cost center with billed usage has a budget.')}</p>
       ) : (

@@ -18,12 +18,12 @@ export function closingLines(dataset: Pick<Dataset, 'label' | 'labelVars' | 'sam
  * theme, the colors and the language go back to their defaults.
  */
 export function startFresh(deleteSaved: boolean): void {
+  useApp.getState().closeData();
+  useUploadNotice.getState().show(null);
   if (deleteSaved) {
     deleteSavedData();
     window.location.replace(window.location.pathname);
     return;
   }
-  useApp.getState().closeData();
-  useUploadNotice.getState().show(null);
   if (window.location.hash) window.history.replaceState(null, '', window.location.pathname + window.location.search);
 }

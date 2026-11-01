@@ -1367,8 +1367,8 @@ const arabic: Dict = {
   'Reached = amount used ≥ budget of the user, as GitHub showed it on the day the data was collected': 'بلغ الميزانية = المبلغ المستخدم ≥ ميزانية المستخدم، كما أظهرها GitHub يوم جمع البيانات',
   'It reads the GitHub Copilot budgets for users in the GitHub data file: budgets for one user, and the amount of each user in a budget that applies to each user.':
     'تقرأ ميزانيات GitHub Copilot للمستخدمين في ملف بيانات GitHub: الميزانيات الخاصة بمستخدم واحد، ومبلغ كل مستخدم في ميزانية تنطبق على كل مستخدم.',
-  'A user is listed when the amount used is at least their budget. A user with several budgets is listed once, with the budget that is the most used.':
-    'يُدرج المستخدم عندما يبلغ المبلغ المستخدم ميزانيته على الأقل. ويُدرج المستخدم الذي له عدة ميزانيات مرة واحدة، مع الميزانية الأكثر استخدامًا.',
+  'A user is listed when the amount used reaches their applicable user limit. An individual limit takes priority, then a cost center default, then the universal default. Broader user limits are replaced, not added.':
+    'يُدرج المستخدم عندما يبلغ المبلغ المستخدَم حد المستخدم الساري. الأولوية للحد الفردي، ثم حد مركز التكلفة الافتراضي، ثم الحد العام الافتراضي. تُستبدل الحدود الأوسع ولا تُجمع.',
   'In a filtered view only users who are in that view are listed.': 'في العرض المصفّى يُدرج فقط المستخدمون الموجودون في ذلك العرض.',
   'The evidence shows up to 5 users, the most used first. The card names up to 12 users who are in the report, and the count includes all of them.':
     'تعرض الأدلة 5 مستخدمين على الأكثر، بدءًا بالأكثر استخدامًا. وتذكر البطاقة 12 مستخدمًا على الأكثر من الموجودين في التقرير، ويشمل العدد جميعهم.',

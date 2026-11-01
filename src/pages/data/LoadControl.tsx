@@ -30,7 +30,7 @@ async function readUploadHead(file: File): Promise<string> {
 
 /** Makes the AI usage report inside a GitHub data file the loaded data, named after the file. */
 const loadUsageReports = (collection: Collection): Promise<boolean> =>
-  loadSources(collection.usageReports.map((report) => ({ name: report.name, data: report.data })), { text: collection.fileName });
+  loadSources(collection.usageReports.map((report) => ({ name: report.name, data: report.data })), { text: collection.fileName }, { keepLoading: true });
 
 /**
  * Sorts the files and sends each one where it belongs: usage reports replace the loaded data, license lists go to the
@@ -38,28 +38,37 @@ const loadUsageReports = (collection: Collection): Promise<boolean> =>
  * the AI usage report inside the GitHub data file is loaded. The result is kept for the Data page.
  */
 export async function takeUploads(files: File[]): Promise<UploadOutcome> {
-  useApp.getState().setError(null);
+  const app = useApp.getState();
+  if (app.loading !== null) return { usageLoaded: null, notice: null };
+  const isCurrent = () => useApp.getState().dataVersion === app.dataVersion;
+  app.setLoading({ label: t('Reading…'), fraction: 0, rows: 0 });
+  app.setError(null);
   useUploadNotice.getState().show(null);
-  const outcome = await routeUploads(files, {
-    readHead: readUploadHead,
-    readText: (file) => file.text(),
-    readCollection: (file) => readCollection(file, file.name),
-    setCollection: (collection) => useApp.getState().setCollection(collection),
-    loadUsage: loadFiles,
-    loadUsageReports,
-    hasDataset: () => useApp.getState().dataset !== null,
-    roster: () => {
-      const settings = useApp.getState().settings;
-      return { roster: settings.roster, rosterAsOf: settings.rosterAsOf };
-    },
-    saveRoster: (state) => {
-      useApp.getState().updateSettings({ roster: state.roster, rosterAsOf: state.rosterAsOf });
-      return useApp.getState().settingsSaved;
-    },
-    setError: (message) => useApp.getState().setError(message),
-  });
-  useUploadNotice.getState().show(outcome.notice);
-  return outcome;
+  try {
+    const outcome = await routeUploads(files, {
+      isCurrent,
+      readHead: readUploadHead,
+      readText: (file) => file.text(),
+      readCollection: (file) => readCollection(file, file.name),
+      setCollection: (collection) => useApp.getState().setCollection(collection),
+      loadUsage: (usageFiles) => loadFiles(usageFiles, { keepLoading: true }),
+      loadUsageReports,
+      hasDataset: () => useApp.getState().dataset !== null,
+      roster: () => {
+        const settings = useApp.getState().settings;
+        return { roster: settings.roster, rosterAsOf: settings.rosterAsOf };
+      },
+      saveRoster: (state) => {
+        useApp.getState().updateSettings({ roster: state.roster, rosterAsOf: state.rosterAsOf });
+        return useApp.getState().settingsSaved;
+      },
+      setError: (message) => useApp.getState().setError(message),
+    });
+    if (isCurrent()) useUploadNotice.getState().show(outcome.notice);
+    return outcome;
+  } finally {
+    if (isCurrent()) app.setLoading(null);
+  }
 }
 
 /** Picks usage reports or a license list. Usage reports replace the loaded data; a license list is added to the license list. */

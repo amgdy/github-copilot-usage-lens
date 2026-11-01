@@ -135,6 +135,54 @@ describe('the limit of a user', () => {
 });
 
 describe('the target of a user', () => {
+  it('does not give an organization default to an out-of-scope report user', async () => {
+    const store = await storeOf([...usageDays('mona', 1, 10), ...usageDays('hubot', 1, 10, { org: 'octo-labs' })]);
+    const collection = collectionOf([everyone(200)], { scope: 'organization', enterprise: null, organizations: ['octo-apps'] });
+    expect(userTarget(collection, store, 'mona')?.limit.amount).toBe(200);
+    expect(userTarget(collection, store, 'hubot')).toBeNull();
+
+    const seated = collectionOf([everyone(200), recordLine('seat', seatRecord('hubot', 'octo-apps', 'business'))], { scope: 'organization', enterprise: null, organizations: ['octo-apps'] });
+    expect(userTarget(seated, store, 'hubot')?.limit.amount).toBe(200);
+    const listedUser = collectionOf([everyone(200), listed('everyone', 'hubot', 20, 200)], { scope: 'organization', enterprise: null, organizations: ['octo-apps'] });
+    expect(userTarget(listedUser, store, 'hubot')?.used).toBe(20);
+  });
+
+  it('anchors GitHub amounts to collection rather than the last report day', async () => {
+    const store = await storeOf(usageDays('mona', 1, 10));
+    const collection = collectionOf([everyone(300), listed('everyone', 'mona', 200, 300)], { startedAt: '2026-10-20T08:00:00Z' });
+    const target = userTarget(collection, store, 'mona')!;
+    expect(target.lastDay).toBe(10);
+    expect(target.dailyRate).toBe(10);
+    expect(target.projected).toBe(320);
+    expect(target.runOutDay).toBe(29);
+  });
+
+  it('does not treat an unrelated organization report as known zero usage', async () => {
+    const store = await storeOf(usageDays('hubot', 1, 10, { org: 'octo-labs' }));
+    const collection = collectionOf([everyone(200), recordLine('seat', seatRecord('mona', 'octo-apps', 'business'))], { scope: 'organization', enterprise: null, organizations: ['octo-apps'] });
+    const target = userTarget(collection, store, 'mona')!;
+    expect(target.lastDay).toBe(0);
+    expect(target.used).toBeNull();
+    expect(target.projected).toBeNull();
+
+    const olderScope = await storeOf([...usageDays('hubot', 1, 10, { org: 'octo-labs' }), { date: '2026-09-30', user: 'mona', org: 'octo-apps', gross: 10 }]);
+    expect(userTarget(collection, olderScope, 'mona')?.used).toBeNull();
+  });
+
+  it('ignores cost-center changes after collection', async () => {
+    const store = await storeOf([...usageDays('mona', 1, 10, { costCenter: 'Mobile' }), ...usageDays('mona', 12, 20, { costCenter: 'Data' })]);
+    const collection = collectionOf([forCostCenter('mobile', 'Mobile', 200), forCostCenter('data', 'Data', 500)]);
+    expect(userTarget(collection, store, 'mona')?.limit.budget.id).toBe('mobile');
+  });
+
+  it('treats a zero user limit as already reached', async () => {
+    const store = await storeOf(usageDays('mona', 1, 10));
+    const target = userTarget(collectionOf([everyone(0)]), store, 'mona')!;
+    expect(target.share).toBeNull();
+    expect(target.level).toBe('used-up');
+    expect(target.runOutDay).toBe(10);
+  });
+
   it('sets the usage in the report against the limit when GitHub did not list the user', async () => {
     const store = await storeOf([...usageDays('mona', 1, 2), ...usageDays('hubot', 1, 10)]);
     const collection = collectionOf([everyone(50)]);
@@ -174,6 +222,25 @@ describe('the target of a user', () => {
 });
 
 describe('the budget map', () => {
+  it('discovers report-only users only inside an organization file scope', async () => {
+    const store = await storeOf([...usageDays('mona', 1, 10), ...usageDays('hubot', 1, 10, { org: 'octo-labs' })]);
+    const collection = collectionOf([everyone(200)], { scope: 'organization', enterprise: null, organizations: ['octo-apps'] });
+    expect(budgetMap(collection, store).held).toEqual({ own: 0, 'cost-center': 0, everyone: 1, none: 0 });
+    const unrelated = collectionOf([everyone(200)], { scope: 'organization', enterprise: null, organizations: ['other'] });
+    expect(budgetMap(unrelated, store).held.everyone).toBe(0);
+  });
+
+  it('does not combine several organization budgets into one outer limit', async () => {
+    const store = await storeOf(usageDays('mona', 1, 10));
+    const collection = collectionOf([
+      budget('apps', { budget_scope: 'organization', budget_entity_name: 'octo-apps', budget_amount: 100 }),
+      budget('labs', { budget_scope: 'organization', budget_entity_name: 'octo-labs', budget_amount: 1000 }),
+    ], { scope: 'organization', enterprise: null, organizations: ['octo-apps', 'octo-labs'] });
+    const map = budgetMap(collection, store);
+    expect(map.top.limits).toEqual([]);
+    expect(map.rooms.map((room) => [room.name, room.limits[0].budget.amount])).toEqual([['octo-apps', 100], ['octo-labs', 1000]]);
+  });
+
   it('stacks the enterprise, the cost centers and organizations, and the limits for users', async () => {
     const store = await storeOf([...usageDays('mona', 1, 10), ...usageDays('hubot', 1, 2), ...usageDays('octocat', 1, 4, { costCenter: 'Mobile' })]);
     const collection = collectionOf([

@@ -26,7 +26,7 @@ const SOURCES: Source[] = [
   {
     title: msg('GitHub data file from the collector script'),
     detail: msg('Budgets, seats, members, the whole bill, activity with code completions and seat changes, in one file. It makes the pool, budget and seat findings more exact and adds more recommendations.'),
-    action: msg('Run the collector script in a copy of this repository, then load its file with the usage report. The GitHub data file card above shows the commands.'),
+    action: msg('Run the collector script with the command from the GitHub data file card, then load its file.'),
     priority: 'script',
     used: true,
     links: ['budgetsApi', 'billingUsageApi', 'usageMetricsApi', 'auditLogs'],
@@ -42,7 +42,7 @@ const SOURCES: Source[] = [
   {
     title: msg('Budgets API'),
     detail: msg('The budgets set for AI credits and how much of each is spent.'),
-    action: msg('Read from the GitHub data file. Usage and pool shows each budget, and the AI credit budget becomes the monthly budget when Settings has none.'),
+    action: msg('Read from the GitHub data file. The Budgets page lists each budget, and the AI credit budget becomes the monthly budget when Settings has none.'),
     used: true,
     links: ['budgetsApi'],
   },
@@ -77,8 +77,8 @@ const SOURCES: Source[] = [
   {
     title: msg('Cost centers API'),
     detail: msg('All cost centers and their members, including people with no usage yet.'),
-    action: msg('The GitHub data file holds them, but this app does not use them yet. The usage report already names the cost center of each row.'),
-    used: false,
+    action: msg('Read from the GitHub data file. The Budgets page uses their user, team and organization assignments to find the applicable limits and shows their included credit pool controls.'),
+    used: true,
     links: ['costCentersApi'],
   },
 ];

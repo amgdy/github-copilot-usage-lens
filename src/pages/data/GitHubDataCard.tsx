@@ -128,7 +128,7 @@ function FileDetails({ collection, problems, sample = false }: { collection: Col
       <p className="text-xs text-fg-subtle">
         {sample
           ? t('It is kept in this browser tab only and is never added to your license list.')
-          : `${t('The script {name} {version} made this file on {host}.', { name: header.collector, version: header.collectorVersion, host: header.host })} ${t('It is kept in this browser tab only. Its seats were added to your license list.')}`}
+          : `${t('The script {name} {version} made this file on {host}.', { name: header.collector, version: header.collectorVersion, host: header.host })} ${t('It is kept in this browser tab only.')}${collection.seats.length > 0 ? ` ${t('Its seats were added to your license list.')}` : ''}`}
       </p>
     </div>
   );

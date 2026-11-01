@@ -94,11 +94,11 @@ const arabic: Dict = {
   'GitHub data file from the collector script': 'ملف بيانات GitHub من سكربت جمع البيانات',
   'Budgets, seats, members, the whole bill, activity with code completions and seat changes, in one file. It makes the pool, budget and seat findings more exact and adds more recommendations.':
     'الميزانيات والتراخيص والأعضاء والفاتورة كاملة والنشاط مع إكمالات التعليمات البرمجية وتغييرات التراخيص، في ملف واحد. يجعل نتائج الرصيد المشترك والميزانية والتراخيص أدق ويضيف توصيات أكثر.',
-  'Run the collector script in a copy of this repository, then load its file with the usage report. The GitHub data file card above shows the commands.':
-    'شغّل سكربت جمع البيانات في نسخة من هذا المستودع، ثم حمّل ملفه مع تقرير الاستخدام. تعرض بطاقة ملف بيانات GitHub في الأعلى الأوامر.',
+  'Run the collector script with the command from the GitHub data file card, then load its file.':
+    'شغّل سكربت جمع البيانات بالأمر من بطاقة ملف بيانات GitHub، ثم حمّل ملفه.',
   'Needs the GitHub CLI': 'يحتاج إلى GitHub CLI',
-  'Read from the GitHub data file. Usage and pool shows each budget, and the AI credit budget becomes the monthly budget when Settings has none.':
-    'يُقرأ من ملف بيانات GitHub. تعرض صفحة «الاستخدام والرصيد المشترك» كل ميزانية، وتصبح ميزانية أرصدة الذكاء الاصطناعي هي الميزانية الشهرية عندما لا توجد ميزانية في الإعدادات.',
+  'Read from the GitHub data file. The Budgets page lists each budget, and the AI credit budget becomes the monthly budget when Settings has none.':
+    'يُقرأ من ملف بيانات GitHub. تعرض صفحة الميزانيات كل ميزانية، وتصبح ميزانية أرصدة الذكاء الاصطناعي هي الميزانية الشهرية عندما لا توجد ميزانية في الإعدادات.',
   'What GitHub billed each month, seats included.': 'ما فوترته GitHub كل شهر، بما في ذلك التراخيص.',
   'Read from the GitHub data file. Usage and pool shows the whole bill, and the Data page checks the usage report against it.':
     'يُقرأ من ملف بيانات GitHub. تعرض صفحة «الاستخدام والرصيد المشترك» الفاتورة كاملة، وتقارن صفحة «البيانات» تقرير الاستخدام بها.',
@@ -108,8 +108,8 @@ const arabic: Dict = {
   'Read from the GitHub data file. Licenses shows the seats added and removed each month.': 'يُقرأ من ملف بيانات GitHub. تعرض صفحة «التراخيص» التراخيص المضافة والمزالة كل شهر.',
   'Read from the GitHub data file when the script runs with --teams. The Organization page then groups usage by team.':
     'يُقرأ من ملف بيانات GitHub عند تشغيل السكربت مع --teams. عندها تجمّع صفحة «المؤسسة» الاستخدام حسب الفريق.',
-  'The GitHub data file holds them, but this app does not use them yet. The usage report already names the cost center of each row.':
-    'يحتويها ملف بيانات GitHub، لكن هذا التطبيق لا يستخدمها بعد. تقرير الاستخدام يذكر بالفعل مركز التكلفة لكل صف.',
+  'Read from the GitHub data file. The Budgets page uses their user, team and organization assignments to find the applicable limits and shows their included credit pool controls.':
+    'تُقرأ من ملف بيانات GitHub. تستخدم صفحة الميزانيات تعيينات المستخدمين والفرق والمؤسسات لتحديد الحدود السارية، وتعرض ضوابط الرصيد المشترك للأرصدة المشمولة.',
   'What else you can add': 'ما الذي يمكنك إضافته أيضًا',
   'Other GitHub data that adds to the usage report, from the most useful.': 'بيانات GitHub أخرى تضيف إلى تقرير الاستخدام، بدءًا من الأكثر فائدة.',
   'Read by this app': 'يقرأه هذا التطبيق',

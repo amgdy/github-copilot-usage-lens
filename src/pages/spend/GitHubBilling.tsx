@@ -47,11 +47,12 @@ function BillCard({ github }: { github: GitHubData }) {
 function BudgetsPointer({ github }: { github: GitHubData }) {
   const count = github.copilotBudgets.length;
   const atLimit = github.usersAtLimit.length;
+  const budgetsFailed = github.problems.some((source) => source.id === 'budgets');
   return (
     <Card title={t('Budgets at GitHub')} calc="github-budgets">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm">
-          {count > 0 ? tp(count, '{n} budget for GitHub Copilot.', '{n} budgets for GitHub Copilot.', { n: fmtInt(count) }) : t('The file has no budget for GitHub Copilot.')}{' '}
+          {count > 0 ? tp(count, '{n} budget for GitHub Copilot.', '{n} budgets for GitHub Copilot.', { n: fmtInt(count) }) : budgetsFailed ? t('The budgets could not be read in full. The Data page says why.') : t('The file has no budget for GitHub Copilot.')}{' '}
           {atLimit > 0 ? tp(atLimit, '{n} user has used up their budget.', '{n} users have used up their budget.', { n: fmtInt(atLimit) }) : null}
         </p>
         <button type="button" className="btn btn-sm" onClick={() => navigate('budgets')}>

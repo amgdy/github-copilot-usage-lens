@@ -2,6 +2,7 @@ import type { DataStore } from '../types';
 import { BLANK } from '../types';
 import { monthEndDay, monthStartDay } from '../utils/date';
 import { budgetLevel, collectionMonth, type BudgetLevel, type BudgetRow } from './budgets';
+import { reportOrganizations } from './derive';
 import { budgetEnded, limitIndex, limitKindOf, resolveUserLimit, type UserLimitKind } from './limits';
 import type { Collection, GitHubBudget } from './types';
 
@@ -69,9 +70,11 @@ function monthUsage(collection: Collection, store: DataStore): Map<string, { log
   const seen = new Uint8Array(users.length);
   const costCenter = new Int32Array(users.length).fill(-1);
   const costCenterDay = new Int32Array(users.length).fill(-1);
+  const allowed = reportOrganizations(collection, store);
+  if (collection.header.scope === 'organization' && allowed === null) return new Map();
   for (let i = 0; i < store.n; i++) {
     const day = store.day[i];
-    if (day < start || day > end) continue;
+    if (day < start || day > end || (allowed !== null && allowed[store.org[i]] === 0)) continue;
     const user = store.user[i];
     seen[user] = 1;
     usage[user] += store.gross[i];
@@ -107,7 +110,7 @@ export function budgetMap(collection: Collection, store: DataStore): BudgetMap {
   const topScope = header.scope;
   const topName = topScope === 'enterprise' ? (header.enterprise ?? '') : header.organizations.length === 1 ? header.organizations[0] : '';
   const isTop = (budget: GitHubBudget): boolean =>
-    budget.scope === 'enterprise' || (topScope === 'organization' && budget.scope === 'organization' && (topName === '' || budget.entity.toLowerCase() === topName.toLowerCase()));
+    (topScope === 'enterprise' && budget.scope === 'enterprise') || (topScope === 'organization' && topName !== '' && budget.scope === 'organization' && budget.entity.toLowerCase() === topName.toLowerCase());
 
   const top = copilot.filter(isTop).map(rowOf).sort((a, b) => a.budget.amount - b.budget.amount);
   const rooms = new Map<string, BudgetRoom>();
@@ -146,7 +149,7 @@ export function budgetMap(collection: Collection, store: DataStore): BudgetMap {
     }
     held[limit.kind]++;
     const used = limit.githubUsed ?? report?.usage ?? 0;
-    const usedUp = limit.amount > 0 && used >= limit.amount ? 1 : 0;
+    const usedUp = used >= limit.amount ? 1 : 0;
     const counter = limit.kind === 'everyone' ? everyone : limit.kind === 'cost-center' ? (rooms.get(`cost_center|${limit.budget.entity.toLowerCase()}`)?.perUser ?? null) : null;
     if (counter !== null) {
       counter.users++;

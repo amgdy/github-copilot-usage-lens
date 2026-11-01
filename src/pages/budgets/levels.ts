@@ -19,9 +19,9 @@ export const levelTone = (level: BudgetLevel): Tone => LEVEL_TONES[level];
 
 /** The name of a kind of limit for users, from the most specific to the most general. */
 export function limitKindLabel(kind: UserLimitKind): string {
-  if (kind === 'own') return t('Own budget');
-  if (kind === 'cost-center') return t('Cost center limit');
-  return t('Limit for each user');
+  if (kind === 'own') return t('Individual limit');
+  if (kind === 'cost-center') return t('Cost center default');
+  return t('Universal default');
 }
 
 /** The name of a budget, marked when it covers all of GitHub Copilot and not only AI credits, so two budgets of one scope can be told apart. */

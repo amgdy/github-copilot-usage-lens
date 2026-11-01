@@ -1,5 +1,6 @@
 import type { DataStore } from '../types';
 import { BLANK } from '../types';
+import { dataCoverage } from '../analytics/coverage';
 import { daysInMonth, monthEndDay, monthIndexOf, monthStartDay, parseIsoDay } from '../utils/date';
 import { reportOrganizations, sourceComplete } from './derive';
 import { heldUsers, limitIndex, type UserLimitKind } from './limits';
@@ -92,7 +93,7 @@ export interface BudgetOverview {
   users: BudgetUserRow[];
   /** User counts by level, in the order of BUDGET_LEVELS. */
   userLevels: Record<BudgetLevel, number>;
-  /** Null when the budgets were not read in full, so a missing budget cannot be told apart from a failed read. */
+  /** Null when budgets were not read in full or the report has no billing split. */
   unbudgeted: UnbudgetedScope[] | null;
   /** True when a budget for the whole enterprise covers usage that has no budget of its own. */
   enterpriseBudget: boolean;
@@ -189,7 +190,7 @@ export function monthBilled(collection: Collection, store: DataStore, budgets: r
   const lastDay = hasRows ? Math.min(monthDays, collectedDay, Math.max(1, store.maxDay - start + 1)) : 0;
   const daily = new Map<string, Float64Array>();
   const result: MonthBilled = { month: collection.header.day.slice(0, 7), monthDays, collectedDay, lastDay, daily };
-  if (lastDay === 0) return result;
+  if (lastDay === 0 || !dataCoverage(store).billing) return result;
 
   const names = nameIndex(store);
   const matches: [GitHubBudget, BudgetMatch][] = [];
@@ -399,7 +400,7 @@ export function budgetOverview(collection: Collection, store: DataStore): Budget
     projectedOut,
     users,
     userLevels,
-    unbudgeted: sourceComplete(collection.sources, 'budgets') ? unbudgetedScopes(store, collection) : null,
+    unbudgeted: sourceComplete(collection.sources, 'budgets') && dataCoverage(store).billing ? unbudgetedScopes(store, collection) : null,
     enterpriseBudget: collection.budgets.some((budget) => budget.copilot && budget.scope === 'enterprise'),
     changes,
     billed,

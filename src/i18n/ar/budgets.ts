@@ -85,9 +85,6 @@ const arabic: Dict = {
   'Limit type': 'نوع الحد',
 
   // Kinds of user limits
-  'Own budget': 'ميزانية خاصة',
-  'Cost center limit': 'حد مركز التكلفة',
-  'Limit for each user': 'الحد لكل مستخدم',
   'No limit': 'بلا حد',
 
   // Limit map
@@ -107,6 +104,7 @@ const arabic: Dict = {
   'Effective user limit': 'حد المستخدم الساري',
   'A zero user limit blocks AI credit usage immediately.': 'يوقف حد المستخدم الصفري استخدام أرصدة الذكاء الاصطناعي فورًا.',
   'Always stops at the user limit': 'يتوقف دائمًا عند حد المستخدم',
+  'Only alert budgets are set here. They do not stop usage.': 'الميزانيات المضبوطة هنا للتنبيه فقط. لا توقف الاستخدام.',
   'Replaced user limits': 'حدود المستخدم المستبدلة',
   'These do not also cap this user. They are not extra credits.': 'لا تضع هذه الحدود سقفًا إضافيًا لهذا المستخدم، وليست أرصدة إضافية.',
   'Cost center assignment': 'مركز التكلفة المعيّن',
@@ -128,8 +126,8 @@ const arabic: Dict = {
   'AI credit limit': 'حد أرصدة الذكاء الاصطناعي',
   'In {month}, GitHub holds this user to this limit, the most specific one that applies. When usage reaches it, GitHub stops their AI credits until the next month. The filters do not change it.':
     'في {month}، يُخضع GitHub هذا المستخدم لهذا الحد، وهو أدق حد ينطبق عليه. عندما يبلغه الاستخدام، يوقف GitHub أرصدة الذكاء الاصطناعي له حتى الشهر القادم. لا تغيّره عوامل التصفية.',
-  'GitHub has no limit for users that applies to this user. Only a spending limit on the amount billed can stop their AI credits.':
-    'لا يوجد في GitHub حد للمستخدمين ينطبق على هذا المستخدم. لا يوقف أرصدة الذكاء الاصطناعي له إلا حد إنفاق على المبلغ المدفوع إضافيًا.',
+  'This file cannot identify the user limit that applies. Check the limit and cost center assignment in GitHub.':
+    'لا يمكن لهذا الملف تحديد حد المستخدم الساري. تحقق من الحد ومركز التكلفة المعيّن في GitHub.',
   'Shown by GitHub': 'كما أظهره GitHub',
   '{name}, as GitHub listed it': '{name}، كما أدرجه GitHub',
   '{name}, assigned to the user': '{name}، مسند إلى المستخدم',

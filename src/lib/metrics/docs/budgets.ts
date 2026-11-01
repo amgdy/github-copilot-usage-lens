@@ -147,7 +147,7 @@ export const BUDGETS_DOCS: MetricDoc[] = [
       'All GitHub Copilot AI credit limits in one picture. The outer frame is the limit on all spending of the enterprise or organization. Each row inside it is one spending limit with the people it holds. Each square is one person, filled to the share of their user limit used.',
     formula: 'Room left in a row = the smaller of its own room and the room in the frame; square fill = amount used ÷ user limit; limits inside = sum of the row limits ÷ frame limit',
     steps: [
-      'The frame is the enterprise limit, or the organization limit in an organization file. Its color follows how full it is. A dashed frame means no limit was found for all spending.',
+      'The frame is the enterprise limit, or the organization limit in an organization file. Its color follows how full it is. A dashed frame means no stopping limit was found. Alert-only budgets stay visible but do not reduce room left.',
       'A user goes in one row: the cost center row when they are in a cost center, else the row of their only seat organization when it has a limit, else the row of users held only by the frame. Users with seats in several organizations, or no seat, go in a row of their own, because GitHub picks one organization each billing cycle.',
       'A row shows its own limit, the room left and the user limit of each person. When the frame has less room than the row, the frame is reached first and the row says so.',
       'The strip under the frame adds up the row limits. When they add up to more than the frame, they cannot all be used in full.',
@@ -160,6 +160,7 @@ export const BUDGETS_DOCS: MetricDoc[] = [
     columns: ['date', 'username', 'gross_amount', 'cost_center_name', 'organization'],
     notes: [
       'A spending limit stops billed usage only when it is set to stop. Included credits pay first, so only the rest counts against it.',
+      'Only stopping budgets count toward the frame, row capacity and room left. Alert-only budgets are not walls.',
       'The enterprise limit counts cost center usage by default. A cost center can be left out in GitHub; the file does not show that.',
       'Repository budgets are left out of the map. The budget table lists them.',
       'Playback applies the current limits to past usage. Spending limits keep the amount used when the data was collected. It is not a history of who was blocked.',
@@ -201,6 +202,7 @@ export const BUDGETS_DOCS: MetricDoc[] = [
     notes: [
       'A budget for the whole enterprise may still cover this usage.',
       'The list is shown only when the budgets were read in full, so a failed read is not taken for a missing budget.',
+      'When a billing row has no organization or cost center, the file cannot support this list. The app asks for a billing split instead of claiming that no budget applies.',
     ],
     example: 'northwind-data has $420 billed this month and no budget, so it is listed.',
     related: ['budget-count', 'budget-levels'],

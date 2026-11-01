@@ -2,7 +2,7 @@ import { type ReactNode, useMemo } from 'react';
 import { msg, t } from '../../i18n';
 import { collectionMonth, sourceComplete, userTarget, type UserCostCenter, type UserTarget } from '../../lib/collection';
 import { fmtDay, monthStartDay, parseIsoDay } from '../../lib/utils/date';
-import { fmtPct, fmtUSD } from '../../lib/utils/format';
+import { fmtInt, fmtPct, fmtUSD } from '../../lib/utils/format';
 import { levelTone, limitKindLabel } from '../../pages/budgets/levels';
 import { budgetName, collectedDay, monthName } from '../../pages/githubText';
 import { useAnalysis } from '../../state/analysis';
@@ -36,8 +36,8 @@ function costCenterText(costCenter: UserCostCenter): string {
 
 function targetOption(target: UserTarget, monthStart: number, colors: ReturnType<typeof useChartColors>): EChartsOption {
   const { limit, used, lastDay, monthDays, dailyRate } = target;
-  const labels = Array.from({ length: monthDays }, (_, dayIndex) => String(dayIndex + 1));
-  const paceDay = lastDay > 0 ? lastDay : Math.max(1, target.collectedDay - 1);
+  const labels = Array.from({ length: monthDays }, (_, dayIndex) => fmtInt(dayIndex + 1));
+  const paceDay = target.usedFrom === 'github' ? Math.max(1, target.collectedDay - 1) : lastDay;
   const usage = labels.map((_, dayIndex) => (dayIndex < target.cumulative.length ? target.cumulative[dayIndex] : null));
   const projected = labels.map((_, dayIndex) => (used === null || dayIndex + 1 < paceDay ? null : used + dailyRate * (dayIndex + 1 - paceDay)));
   const top = Math.max(limit.amount, target.projected ?? 0, used ?? 0, ...target.cumulative) * 1.08;
@@ -47,7 +47,7 @@ function targetOption(target: UserTarget, monthStart: number, colors: ReturnType
     ...(target.usedFrom === 'github' && used !== null
       ? [{ coord: [paceDay - 1, used], itemStyle: { color: colors.accent }, label: { show: true, position: 'left', distance: 6, color: colors.textMuted, backgroundColor: colors.surface, padding: [2, 4], fontSize: 11, formatter: t(SHOWN_BY_GITHUB) } }]
       : []),
-    ...(target.runOutDay !== null && (target.share ?? 0) < 1
+    ...(limit.amount > 0 && target.runOutDay !== null && (target.share ?? 0) < 1
       ? [
           {
             coord: [target.runOutDay - 1, limit.amount],
@@ -105,7 +105,7 @@ export function UserLimitBlock({ login, name }: { login: string; name: string })
   const budgetsRead = collection !== null && sourceComplete(collection.sources, 'budgets');
   const target = useMemo(() => (collection !== null && budgetsRead ? userTarget(collection, store, login) : null), [collection, budgetsRead, store, login]);
   const monthStart = collection !== null ? monthStartDay(collectionMonth(collection)) : 0;
-  const option = useMemo(() => (target !== null && target.lastDay > 0 ? targetOption(target, monthStart, colors) : null), [target, monthStart, colors]);
+  const option = useMemo(() => (target !== null && target.used !== null ? targetOption(target, monthStart, colors) : null), [target, monthStart, colors]);
   if (collection === null || !budgetsRead) return null;
 
   const month = monthName(collection.header.day.slice(0, 7));
@@ -113,14 +113,14 @@ export function UserLimitBlock({ login, name }: { login: string; name: string })
     return (
       <DrawerSection title={t('AI credit limit')} calc="user-limit">
         <p className="rounded-lg border border-dashed border-border px-3 py-2 text-xs text-fg-muted">
-          {t('GitHub has no limit for users that applies to this user. Only a spending limit on the amount billed can stop their AI credits.')}
+          {t('This file cannot identify the user limit that applies. Check the limit and cost center assignment in GitHub.')}
         </p>
       </DrawerSection>
     );
   }
 
   const { limit, used, share, level } = target;
-  const reached = share !== null && share >= 1;
+  const reached = limit.amount === 0 || (share !== null && share >= 1);
   const left = used === null ? null : Math.max(0, limit.amount - used);
   const reachesOn = reached ? t('Already reached') : target.runOutDay !== null ? fmtDay(monthStart + target.runOutDay - 1, true) : t('Not this month');
   const basis =

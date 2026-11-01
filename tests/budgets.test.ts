@@ -29,6 +29,22 @@ describe('budget levels', () => {
 });
 
 describe('budget pace', () => {
+  it('uses GitHub amounts or unknown when report billing columns are missing', async () => {
+    const data = makeCsv(billedDays(1, 10, 'octo-apps'), { columns: ['date', 'username', 'organization', 'gross_amount'] });
+    const store = await buildStore([{ name: 'usage.csv', data }]);
+    const collection = collectionOf([budget('ent', { budget_amount: 300, consumed_amount: 100 })]);
+    const pace = budgetPace(collection, store, collection.budgets[0])!;
+    expect(pace.basis).toBe('github');
+    expect(pace.used).toBe(100);
+    expect(pace.dailyRate).toBe(10);
+    expect(pace.runOutDay).toBe(30);
+    expect(budgetOverview(collection, store).projectedOut).toHaveLength(1);
+    expect(budgetOverview(collection, store).unbudgeted).toBeNull();
+
+    const unknown = collectionOf([budget('ent', { consumed_amount: null })]);
+    expect(budgetPace(unknown, store, unknown.budgets[0])).toBeNull();
+  });
+
   it('adds up the billed amount of the budget scope and projects the month end', async () => {
     const store = await storeOf([...billedDays(1, 10, 'octo-apps'), ...billedDays(1, 10, 'octo-data')]);
     const collection = collectionOf([budget('apps', { budget_scope: 'organization', budget_entity_name: 'Octo-Apps', budget_amount: 200, consumed_amount: 100 })]);

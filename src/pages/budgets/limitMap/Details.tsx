@@ -84,7 +84,9 @@ export function Details({ board, target, shares, day, store, userIds, choose }: 
               <span className="num block text-[11px] text-fg-muted">
                 {laneRow !== null
                   ? `${limitName(laneRow)} ${money(laneRow.budget.amount)} · ${t('{amount} left', { amount: roomText(roomOf(laneRow)) })}`
-                  : lane.kind === 'unclear'
+                  : lane.limits.length > 0
+                    ? t('Only alert budgets are set here. They do not stop usage.')
+                    : lane.kind === 'unclear'
                     ? t('GitHub picks one seat organization each billing cycle.')
                     : lane.countedByTop
                       ? t('No spending limit of its own')
@@ -97,7 +99,7 @@ export function Details({ board, target, shares, day, store, userIds, choose }: 
               <span className="eyebrow block text-fg-subtle"><WithIcon Icon={topIcon(top)}>{topLabel(top)}</WithIcon></span>
               <span className="block break-words text-xs font-semibold">{top.name}</span>
               <span className="num block text-[11px] text-fg-muted">
-                {top.wall !== null ? `${limitName(top.wall)} ${money(top.wall.budget.amount)} · ${t('{amount} left', { amount: roomText(top.room) })}` : top.known ? t('No spending limit is set here.') : t('Not known')}
+                {top.wall !== null ? `${limitName(top.wall)} ${money(top.wall.budget.amount)} · ${t('{amount} left', { amount: roomText(top.room) })}` : top.limits.length > 0 ? t('Only alert budgets are set here. They do not stop usage.') : top.known ? t('No spending limit is set here.') : t('Not known')}
               </span>
             </button>
           ) : (

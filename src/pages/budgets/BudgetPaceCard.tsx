@@ -6,7 +6,7 @@ import { msg, t } from '../../i18n';
 import { budgetPace, collectionMonth, PACE_DAYS, type BudgetOverview, type BudgetPace, type Collection } from '../../lib/collection';
 import type { DataStore } from '../../lib/types';
 import { fmtDay, monthStartDay } from '../../lib/utils/date';
-import { fmtUSD } from '../../lib/utils/format';
+import { fmtInt, fmtUSD } from '../../lib/utils/format';
 import { niceMax } from '../spend/helpers';
 import { budgetLabel } from './levels';
 
@@ -23,7 +23,7 @@ function Fact({ label, value }: { label: string; value: string }) {
 }
 
 function paceOption(pace: BudgetPace, amount: number, monthStart: number, colors: ReturnType<typeof useChartColors>): EChartsOption {
-  const labels = Array.from({ length: pace.monthDays }, (_, dayIndex) => String(dayIndex + 1));
+  const labels = Array.from({ length: pace.monthDays }, (_, dayIndex) => fmtInt(dayIndex + 1));
   const used: (number | null)[] = labels.map((_, dayIndex) => {
     if (pace.basis === 'report') return dayIndex < pace.cumulative.length ? pace.cumulative[dayIndex] : null;
     return dayIndex === pace.lastDay - 1 ? pace.used : null;
