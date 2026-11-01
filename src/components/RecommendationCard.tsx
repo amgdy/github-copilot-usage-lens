@@ -6,7 +6,7 @@ import { fmtUSD } from '../lib/utils/format';
 import { drill } from '../state/router';
 import { useApp } from '../state/store';
 import { FeatureIcon, type FeatureId } from './icons';
-import { Badge, CalcInfo, SeverityBadge, severityTone, cx } from './ui';
+import { Badge, CalcInfo, Figures, SeverityBadge, severityTone, cx } from './ui';
 import { TONE_CLASS } from './ui/Primitives';
 
 export const THEME_LABEL: Record<RecTheme, string> = {
@@ -117,7 +117,9 @@ export function RecommendationCard({ rec: recommendation, defaultOpen = false }:
               <span className="text-[11px] text-fg-subtle">{t('For {audience}', { audience: recommendation.audience.map((audience) => audienceLabel(audience).toLowerCase()).join(t(', ')) })}</span>
             </div>
             <h3 className="text-sm font-semibold leading-snug">{recommendation.title}</h3>
-            <p className="mt-1 text-sm text-fg-muted">{recommendation.summary}</p>
+            <p className="mt-1 text-sm text-fg-muted">
+              <Figures text={recommendation.summary} />
+            </p>
           </div>
           <div className="flex shrink-0 flex-col items-end gap-2">
             <ImpactChip rec={recommendation} />
@@ -136,7 +138,9 @@ export function RecommendationCard({ rec: recommendation, defaultOpen = false }:
                 <div className="label">{t('What the data shows')}</div>
                 <ul className="list-disc space-y-1 ps-4 text-sm">
                   {recommendation.evidence.map((fact, index) => (
-                    <li key={index}>{fact}</li>
+                    <li key={index}>
+                      <Figures text={fact} />
+                    </li>
                   ))}
                 </ul>
               </div>
@@ -146,14 +150,20 @@ export function RecommendationCard({ rec: recommendation, defaultOpen = false }:
                 <div className="label">{t('What to do')}</div>
                 <ol className="list-decimal space-y-1 ps-4 text-sm">
                   {recommendation.actions.map((action, index) => (
-                    <li key={index}>{action}</li>
+                    <li key={index}>
+                      <Figures text={action} />
+                    </li>
                   ))}
                 </ol>
               </div>
             ) : null}
           </div>
 
-          {recommendation.caveat ? <p className="rounded-md bg-warn-soft px-2.5 py-1.5 text-xs text-warn">{recommendation.caveat}</p> : null}
+          {recommendation.caveat ? (
+            <p className="rounded-md bg-warn-soft px-2.5 py-1.5 text-xs text-warn">
+              <Figures text={recommendation.caveat} />
+            </p>
+          ) : null}
 
           {recommendation.affected.length ? (
             <div>

@@ -60,6 +60,7 @@ export default function MonthTable() {
       },
       {
         key: 'usage',
+        strong: true,
         header: t('Usage'),
         align: 'end',
         hint: t('Usage in the month, within the date range'),

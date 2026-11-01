@@ -62,6 +62,7 @@ export function SkuTable() {
       },
       {
         key: 'usage',
+        strong: true,
         header: t('Usage'),
         align: 'end',
         hint: t('Value of the AI credits used.'),

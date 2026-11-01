@@ -3,6 +3,7 @@ import { BarChart3 } from 'lucide-react';
 import { EChart, type ChartClick, type EChartsOption } from '../charts/EChart';
 import { CalcInfo, CalcLine, type CalcRef } from './CalcInfo';
 import { cx } from './cx';
+import { Figures } from './Figure';
 import { EmptyState } from './Primitives';
 
 export interface CardProps {
@@ -32,7 +33,11 @@ export function Card({ title, subtitle, actions, footer, children, className, bo
                   {calc ? <CalcInfo id={calc} /> : null}
                 </h3>
               ) : null}
-              {subtitle ? <p className="mt-0.5 text-xs text-fg-muted">{subtitle}</p> : null}
+              {subtitle ? (
+                <p className="mt-0.5 text-xs text-fg-muted">
+                  <Figures text={subtitle} />
+                </p>
+              ) : null}
               <CalcLine id={calc} className="mt-1" />
             </div>
           ) : null}

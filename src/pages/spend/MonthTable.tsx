@@ -132,6 +132,7 @@ export function MonthTable({ rows, selected, onSelect }: MonthTableProps) {
       },
       {
         key: 'usage',
+        strong: true,
         header: t('Usage'),
         align: 'end',
         hint: t('Value of the AI credits used.'),

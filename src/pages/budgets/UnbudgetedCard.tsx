@@ -17,7 +17,7 @@ export function UnbudgetedCard({ overview, store }: { overview: BudgetOverview; 
     () => [
       { key: 'name', header: t('Name'), value: (row) => row.name, render: (row) => <span className="font-medium">{row.name}</span> },
       { key: 'scope', header: t('Type'), value: (row) => scopeLabel(row.scope) },
-      { key: 'billed', header: t('Billed'), align: 'end', value: (row) => row.billed, render: (row) => fmtUSD(row.billed) },
+      { key: 'billed', header: t('Billed'), align: 'end', strong: true, value: (row) => row.billed, render: (row) => fmtUSD(row.billed) },
     ],
     [],
   );

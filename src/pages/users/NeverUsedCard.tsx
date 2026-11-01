@@ -19,6 +19,7 @@ function neverUsedColumns(): Column<SeatCandidate>[] {
     { key: 'plan', header: t('Plan'), value: (seat) => seatPlanLabel(seat.plan) },
     {
       key: 'value',
+      strong: true,
       header: t('License cost per month'),
       calc: 'seat-unused',
       value: (seat) => seat.value,

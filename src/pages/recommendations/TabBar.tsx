@@ -6,8 +6,10 @@ export interface TabItem<T extends string> {
   id: T;
   label: string;
   icon?: ReactNode;
-  /** Small number shown next to the label. */
-  count?: number;
+  /** Short text shown next to the label, such as a count. Format numbers before passing them. */
+  badge?: string;
+  /** What the badge counts, shown on hover. */
+  badgeHint?: string;
 }
 
 export const tabId = (prefix: string, id: string): string => `${prefix}-tab-${id}`;
@@ -71,7 +73,11 @@ export function TabBar<T extends string>({
           >
             {tab.icon}
             {tab.label}
-            {tab.count !== undefined ? <span className="num rounded-xs bg-surface-3 px-1 text-[11px] font-normal text-fg-muted">{tab.count}</span> : null}
+            {tab.badge !== undefined ? (
+              <span className="num rounded-xs bg-surface-3 px-1 text-[11px] font-normal text-fg-muted" title={tab.badgeHint}>
+                {tab.badge}
+              </span>
+            ) : null}
           </button>
         );
       })}

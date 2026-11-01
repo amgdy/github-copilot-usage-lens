@@ -8,7 +8,7 @@ import { userActionRows } from '../lib/analytics/tips';
 import { buildSummaryMarkdown } from '../lib/export/summary';
 import { fmtDay, isoDate } from '../lib/utils/date';
 import { downloadCsv, downloadText } from '../lib/utils/download';
-import { pluralize } from '../lib/utils/format';
+import { fmtInt, pluralize } from '../lib/utils/format';
 import { useAnalysis } from '../state/analysis';
 import { chipText, describeFilters } from '../state/filterChips';
 import { printReport } from '../state/print';
@@ -54,12 +54,19 @@ export default function RecommendationsPage() {
     downloadCsv(`github-copilot-user-actions_${stamp}`, table.headers, table.rows);
   };
 
-  // Seat lists are empty on a filtered view, so a count there would mislead.
-  const seatCount = analysis.narrowed ? undefined : seats.idle.length + seats.downgrade.length + seats.unused.length;
+  // Seat lists are empty on a filtered view, so a count there would mislead. The count is of seats to act on, not of all
+  // seats, so it says "to review" to keep it from being read as the seat total.
+  const seatsToReview = analysis.narrowed ? undefined : seats.idle.length + seats.downgrade.length + seats.unused.length;
   const tabs: TabItem<TabKey>[] = [
-    { id: 'recommendations', label: t('Recommendations'), icon: <Lightbulb size={ICON} aria-hidden />, count: analysis.recs.length },
+    { id: 'recommendations', label: t('Recommendations'), icon: <Lightbulb size={ICON} aria-hidden />, badge: fmtInt(analysis.recs.length) },
     { id: 'simulator', label: t('What-if simulator'), icon: <SlidersHorizontal size={ICON} aria-hidden /> },
-    { id: 'seats', label: t('Seats'), icon: <Armchair size={ICON} aria-hidden />, count: seatCount },
+    {
+      id: 'seats',
+      label: t('Seats'),
+      icon: <Armchair size={ICON} aria-hidden />,
+      badge: seatsToReview === undefined ? undefined : t('{n} to review', { n: seatsToReview }),
+      badgeHint: t('Seats in the lists on this tab: idle seats, Enterprise seats that fit Business and roster seats that never appear.'),
+    },
     { id: 'playbook', label: t('Playbook'), icon: <BookOpen size={ICON} aria-hidden /> },
   ];
   const active = tabs.find((tabItem) => tabItem.id === tab) ?? tabs[0];

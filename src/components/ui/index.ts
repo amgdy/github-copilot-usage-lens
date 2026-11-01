@@ -4,6 +4,7 @@ export { CalcDetails, methodologyHref } from './CalcDetails';
 export { CalcInfo, CalcLegend, CalcLine, docsOf, type CalcRef } from './CalcInfo';
 export { Card, ChartCard, type CardProps, type ChartCardProps } from './Card';
 export { Callout, EmptyState, PageHeader, PendingBar, Section, Spinner, TONE_CLASS, TONE_FILL, TONE_TEXT, type Tone } from './Primitives';
+export { Fig, Figures } from './Figure';
 export { Field, NumberField, Popover, SearchInput, Segmented, Select, Slider, Toggle, type NumberFieldProps, type SegmentedOption } from './Controls';
 export { DataTable, type Column, type DataTableProps } from './DataTable';
 export { DocLinks, type DocLinksProps } from './DocLinks';

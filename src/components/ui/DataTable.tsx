@@ -31,6 +31,8 @@ export interface Column<T> {
   hidden?: boolean;
   csvHeader?: string;
   noCsv?: boolean;
+  /** The key figure of the table, such as usage or billed: shown semibold so the eye finds it first. Use it on one column. */
+  strong?: boolean;
   className?: string;
 }
 
@@ -262,7 +264,7 @@ export function DataTable<T>({
                   {visible.map((column) => {
                     const side = sideOf(column.align);
                     return (
-                      <td key={column.key} className={cx('border-b border-border-muted px-3', cellPadding, SIDE_TEXT[side], side === 'end' && 'num', column.className)}>
+                      <td key={column.key} className={cx('border-b border-border-muted px-3', cellPadding, SIDE_TEXT[side], side === 'end' && 'num', column.strong && 'font-semibold text-fg', column.className)}>
                         {column.render ? column.render(row) : (column.value(row) ?? '–')}
                       </td>
                     );

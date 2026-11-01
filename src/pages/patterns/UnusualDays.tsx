@@ -41,7 +41,7 @@ export default function UnusualDays() {
           </span>
         ),
       },
-      { key: 'gross', header: t('Usage'), align: 'end', calc: 'usage', value: (anomaly) => anomaly.gross, render: (anomaly) => fmtUSD(anomaly.gross) },
+      { key: 'gross', header: t('Usage'), align: 'end', calc: 'usage', strong: true, value: (anomaly) => anomaly.gross, render: (anomaly) => fmtUSD(anomaly.gross) },
       {
         key: 'baseline',
         header: t('Typical day'),
