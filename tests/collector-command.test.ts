@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_COLLECTOR_CHOICES,
   cleanCollectorChoices,
+  collectorAddresses,
   collectorCommand,
   collectorCopyCommand,
   collectorNames,
@@ -96,6 +97,53 @@ describe('collector script source', () => {
     expect(collectorScriptUrl('powershell', pinned)).toBe(`https://raw.githubusercontent.com/octo/fork/${commit}/scripts/collect.ps1`);
     expect(collectorScriptPageUrl('powershell', pinned)).toBe(`https://github.com/octo/fork/blob/${commit}/scripts/collect.ps1`);
     expect(collectorZipUrl(pinned)).toBe(`https://github.com/octo/fork/archive/${commit}.zip`);
+  });
+});
+
+describe('collectorAddresses', () => {
+  const addresses = (overrides: Partial<CollectorChoices> = {}) => collectorAddresses(choices(overrides)).map((entry) => entry.address);
+  const scriptAddresses = (overrides: Partial<CollectorChoices> = {}) =>
+    collectorAddresses(choices(overrides))
+      .filter((entry) => !entry.beforeRun)
+      .map((entry) => entry.address);
+
+  it('lists the script download, the sign-in, the API and the report files of GitHub.com', () => {
+    expect(addresses()).toEqual([
+      'raw.githubusercontent.com',
+      'github.com',
+      'api.github.com',
+      'copilot-reports.github.com',
+      'copilot-reports-*.b01.azurefd.net',
+      'usagereports*.blob.core.windows.net',
+      'mbproduction.blob.core.windows.net',
+    ]);
+  });
+
+  it('adds the AI usage report storage only for an enterprise, the only scope that gets that report', () => {
+    expect(addresses({ scope: 'organization' })).not.toContain('mbproduction.blob.core.windows.net');
+    expect(addresses({ scope: 'organization' })).toContain('copilot-reports.github.com');
+  });
+
+  it('follows the host the same way the scripts clean it', () => {
+    expect(scriptAddresses({ hostname: ' OctoCorp.GHE.com ' })).toEqual(['api.octocorp.ghe.com', '*.octocorp.ghe.com']);
+    expect(scriptAddresses({ hostname: 'api.octocorp.ghe.com' })).toEqual(['api.octocorp.ghe.com', '*.octocorp.ghe.com']);
+    expect(addresses({ hostname: 'octocorp.ghe.com' })).toContain('octocorp.ghe.com');
+    expect(addresses({ hostname: 'ghes.example.com' })).toEqual(['raw.githubusercontent.com', 'ghes.example.com']);
+  });
+
+  it('uses GitHub.com when the host is left out of the command', () => {
+    expect(addresses({ hostname: 'https://octocorp.ghe.com/' })).toEqual(addresses());
+    expect(addresses({ hostname: '   ' })).toEqual(addresses());
+  });
+
+  it('says what each address is for and has no repeats', () => {
+    for (const hostname of ['', 'octocorp.ghe.com', 'ghes.example.com']) {
+      for (const scope of ['enterprise', 'organization'] as const) {
+        const entries = collectorAddresses(choices({ hostname, scope }));
+        expect(new Set(entries.map((entry) => entry.address)).size).toBe(entries.length);
+        for (const entry of entries) expect(entry.purpose).not.toBe('');
+      }
+    }
   });
 });
 

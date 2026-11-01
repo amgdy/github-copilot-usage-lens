@@ -6,6 +6,7 @@ import {
   COLLECTOR_MONTHS,
   DEFAULT_COLLECTOR_CHOICES,
   cleanCollectorChoices,
+  collectorAddresses,
   collectorCommand,
   collectorCopyCommand,
   collectorProblems,
@@ -26,6 +27,9 @@ const EXAMPLE_ENTERPRISE = 'octocorp';
 const EXAMPLE_ORGANIZATIONS = 'octo-org, octo-labs';
 const EXAMPLE_HOST = 'github.com';
 const SIGN_IN_COMMAND = 'gh auth login';
+const HTTPS_PORT = 443;
+/** Windows checks certificate revocation over plain HTTP. */
+const HTTP_PORT = 80;
 
 const SYSTEMS: { value: CollectorSystem; label: string }[] = [
   { value: 'bash', label: msg('Mac or Linux') },
@@ -81,6 +85,50 @@ function CommandBox({ command, copyLabel }: { command: string; copyLabel: string
         <CopyButton size="sm" label={copyLabel} getText={() => command} />
       </div>
     </div>
+  );
+}
+
+/**
+ * The addresses to allow before running the command, for networks that allow only some addresses. They follow the
+ * host and the scope, like the plan the script shows before it starts.
+ */
+function NetworkAddresses({ choices }: { choices: CollectorChoices }) {
+  const addresses = collectorAddresses(choices);
+  const hasPattern = addresses.some((entry) => entry.address.includes('*'));
+  return (
+    <details className="group text-xs">
+      <summary className="inline-flex cursor-pointer list-none items-center gap-1 text-accent hover:underline [&::-webkit-details-marker]:hidden">
+        <ChevronRight size={12} aria-hidden className="transition-transform group-open:rotate-90 rtl:-scale-x-100 rtl:group-open:-rotate-90" />
+        {t('Does your network allow only some addresses?')}
+      </summary>
+      <div className="mt-2 space-y-2">
+        <p className="leading-relaxed text-fg-muted">
+          {t('Ask your network team to allow HTTPS (port {port}) to these addresses before you run the command.', { port: HTTPS_PORT })}
+          {hasPattern ? ` ${t('A * stands for any part of the name.')}` : ''}
+        </p>
+        <ul className="divide-y divide-border rounded-md border border-border bg-surface-2">
+          {addresses.map((entry) => (
+            <li key={entry.address} className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 px-2 py-1.5">
+              <code dir="ltr" className="break-all">
+                {entry.address}
+              </code>
+              <span className="text-fg-muted">{t(entry.purpose)}</span>
+            </li>
+          ))}
+        </ul>
+        <p className="leading-relaxed text-fg-muted">
+          {t('When the script starts, before it asks anything, it checks that the GitHub API and the report addresses answer. GitHub can send report files from other addresses. If the network blocks one, the script names it in its summary.')}
+        </p>
+        {choices.system === 'powershell' ? (
+          <p className="leading-relaxed text-fg-muted">
+            {t('Windows also checks each certificate with its issuer over HTTP (port {port}). If the network blocks that check, the script downloads the file again without it.', {
+              port: HTTP_PORT,
+            })}
+          </p>
+        ) : null}
+        <DocLinks ids={['copilotAllowlist']} compact />
+      </div>
+    </details>
   );
 }
 
@@ -209,6 +257,7 @@ export function CollectorCommand() {
             ? t('When it says the file is saved, drop the file here. It has the AI usage report too, so it is the only file you need. You need to be an enterprise owner or billing manager.')
             : t('When it says the file is saved, drop it here together with the usage report CSV from GitHub billing. GitHub makes the AI usage report file only for enterprises. You need to be an organization owner or billing manager.')}
         </p>
+        <NetworkAddresses choices={choices} />
         <details className="group text-xs">
           <summary className="inline-flex cursor-pointer list-none items-center gap-1 text-accent hover:underline [&::-webkit-details-marker]:hidden">
             <ChevronRight size={12} aria-hidden className="transition-transform group-open:rotate-90 rtl:-scale-x-100 rtl:group-open:-rotate-90" />

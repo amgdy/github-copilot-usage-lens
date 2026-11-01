@@ -1,35 +1,56 @@
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { gunzipSync } from 'node:zlib';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { collectionLicenseParse, pickBudget, readCollection, usageReportState } from '../src/lib/collection';
+import { DEFAULT_COLLECTOR_CHOICES, collectionLicenseParse, collectorAddresses, pickBudget, readCollection, usageReportState } from '../src/lib/collection';
 import { EMPTY_REPORT_MESSAGE, REPORT_WAITING_MESSAGES } from '../src/lib/collection/types';
 import { storedText } from './collectionLines';
-import { GH_DEFAULT_API_VERSION, MOCK_HOST, MOCK_TOKEN, startMockGitHub, type MockGitHub, type RecordedRequest } from './collectorMock';
+import { BLOCKED_HOST, GH_DEFAULT_API_VERSION, MOCK_HOST, MOCK_TOKEN, startMockGitHub, type MockGitHub, type RecordedRequest } from './collectorMock';
 
 /*
  * Runs the collector scripts with the real GitHub CLI and curl against a pretend GitHub (tests/collectorMock.ts).
- * Only on Linux with gh, curl, openssl and bash installed; otherwise the tests are skipped. The PowerShell script is
- * compared with the bash script when pwsh is installed.
+ * On Linux and macOS with gh, curl, openssl and bash installed; otherwise the tests are skipped. On macOS they use the
+ * bash 3.2 that comes with it, the oldest bash collect.sh must work with. The PowerShell script is compared with the
+ * bash script when pwsh is installed.
  */
 
 const ROOT = join(import.meta.dirname, '..');
 const BASH_SCRIPT = join(ROOT, 'scripts', 'collect.sh');
 const POWERSHELL_SCRIPT = join(ROOT, 'scripts', 'collect.ps1');
 const RUN_TIMEOUT = 240_000;
+const ON_MAC = process.platform === 'darwin';
+const BASH = ON_MAC ? '/bin/bash' : 'bash';
 
 const toolWorks = (command: string, args: string[]) => spawnSync(command, args, { stdio: 'ignore', timeout: 20_000 }).status === 0;
 
 const CAN_RUN =
-  process.platform === 'linux' &&
+  (process.platform === 'linux' || ON_MAC) &&
   toolWorks('gh', ['--version']) &&
   toolWorks('curl', ['--version']) &&
-  toolWorks('bash', ['--version']) &&
+  toolWorks(BASH, ['--version']) &&
   toolWorks('openssl', ['version']);
-const HAS_POWERSHELL = CAN_RUN && toolWorks('pwsh', ['-NoLogo', '-NoProfile', '-Command', 'exit 0']);
-const HAS_SCRIPT = CAN_RUN && toolWorks('script', ['--version']);
+const POWERSHELL_WORKS = toolWorks('pwsh', ['-NoLogo', '-NoProfile', '-Command', 'exit 0']);
+const HAS_POWERSHELL = CAN_RUN && POWERSHELL_WORKS;
+// --list-sources sends no request, so it runs wherever bash runs.
+const HAS_BASH = process.platform !== 'win32' && toolWorks(BASH, ['--version']);
+// script of macOS has no --version.
+const HAS_SCRIPT = CAN_RUN && (ON_MAC ? existsSync('/usr/bin/script') : toolWorks('script', ['--version']));
+// .NET on macOS trusts only the certificates in the keychain, not SSL_CERT_FILE, so it cannot reach the pretend GitHub.
+const DOTNET_TRUSTS_TEST_CERTIFICATE = process.platform === 'linux';
+
+/**
+ * A command that runs the command line in a new terminal, as when a person runs it in a terminal window. script of
+ * macOS cannot read the terminal settings of the socket Node gives a child as its input, so a pipe from cat feeds it.
+ */
+function inTerminal(commandLine: string): string[] {
+  if (ON_MAC) return [BASH, '-c', 'script -q /dev/null /bin/sh -c "$1" < <(cat 2>/dev/null)', 'terminal', commandLine];
+  return ['script', '-qec', commandLine, '/dev/null'];
+}
+
+/** A question of the scripts, such as "Start? [Y/n] ". */
+const QUESTION = /\[(?:Y\/n|y\/N)\]/;
 
 interface BundleLine {
   kind: string;
@@ -133,7 +154,7 @@ const powershellArgument = (value: string) => (/^[\w.,-]+$/.test(value) ? value 
  * the same in a pretend terminal, so the script asks its questions. `powershell-block` runs the script text as a script
  * block, as the command from the app does after irm downloads it.
  */
-type RunMode = 'bash' | 'bash-piped' | 'bash-terminal' | 'powershell' | 'powershell-block';
+type RunMode = 'bash' | 'bash-piped' | 'bash-terminal' | 'powershell' | 'powershell-block' | 'powershell-terminal';
 
 /** The full path of a program on PATH, so a test can run a script with only some programs. */
 function findProgram(name: string): string {
@@ -142,6 +163,50 @@ function findProgram(name: string): string {
   }
   throw new Error(`${name} is not installed.`);
 }
+
+/** What curl on Windows says when the network blocks the servers that tell if a certificate was revoked. */
+const REVOCATION_ERROR =
+  'curl: (35) schannel: next InitializeSecurityContext failed: CRYPT_E_NO_REVOCATION_CHECK (0x80092012) - The revocation function was unable to check revocation for the certificate.';
+
+/** The scripts' notes about the network, the same in both. */
+const NETWORK_MESSAGES = {
+  unreachable: 'This computer could not reach these addresses, so some data is missing:',
+  allow: 'Ask your network team to allow HTTPS (port 443) to them, then run this script again.',
+  revocation: 'Windows could not check if the certificates of these addresses were revoked, because the network blocks the',
+  retried: 'The script tried again without this check. To keep the check, ask your network team to allow those servers.',
+  addresses: 'Every address the script uses: https://github.com/amgdy/github-copilot-usage-lens#network-access',
+  loginHint: ', ask your network team to allow HTTPS (port 443) to it.',
+  download: 'Could not download the report file from ',
+  proxy: 'The network proxy refused the connection (HTTP ',
+};
+
+/** The scripts' network check before they ask anything, the same in both. */
+const CHECK_MESSAGES = {
+  heading: 'Checking the network',
+  notChecked: 'not checked: GitHub picks the full name when it sends a file',
+  answersWithoutRevocation: 'answers, without the revocation check',
+  noAnswer: 'no answer: ',
+  revocation: 'Windows could not check if the certificates were revoked, because the network blocks the servers that answer',
+  oneBlocked: '1 address did not answer, so the data that needs it may be missing.',
+  goOn: 'Go on anyway?',
+  stopped: 'Stopped. Nothing was saved.',
+};
+
+/** The lines of the network check: its heading and the indented lines after it. */
+function networkCheck(output: string): string[] {
+  const lines = output.replace(/\r/g, '').split('\n');
+  const start = lines.findIndex((line) => line.startsWith(CHECK_MESSAGES.heading));
+  if (start < 0) return [];
+  const block = [lines[start]];
+  for (const line of lines.slice(start + 1)) {
+    if (!line.startsWith('  ')) break;
+    block.push(line);
+  }
+  return block;
+}
+
+/** How the network check shows one address and its result. */
+const checkLine = (address: string, result: string) => `  ${address.padEnd(37)} ${result}`;
 
 describe.skipIf(!CAN_RUN)('data collector scripts against a pretend GitHub', () => {
   let folder = '';
@@ -196,26 +261,37 @@ describe.skipIf(!CAN_RUN)('data collector scripts against a pretend GitHub', () 
   function run(mode: RunMode, args: string[], changes: NodeJS.ProcessEnv = {}, typed?: string): Promise<RunResult> {
     const powershell = ['pwsh', '-NoLogo', '-NoProfile', '-NonInteractive'];
     const startWith: Record<RunMode, { command: string[]; input?: Buffer | string }> = {
-      bash: { command: ['bash', BASH_SCRIPT, ...args] },
-      'bash-piped': { command: ['bash', '-s', '--', ...args], input: readFileSync(BASH_SCRIPT) },
-      'bash-terminal': { command: ['script', '-qec', `cat '${BASH_SCRIPT}' | bash -s -- ${args.join(' ')}`, '/dev/null'], input: typed ?? '' },
+      bash: { command: [BASH, BASH_SCRIPT, ...args] },
+      'bash-piped': { command: [BASH, '-s', '--', ...args], input: readFileSync(BASH_SCRIPT) },
+      'bash-terminal': { command: inTerminal(`cat '${BASH_SCRIPT}' | ${BASH} -s -- ${args.join(' ')}`), input: typed ?? '' },
       powershell: { command: [...powershell, '-File', POWERSHELL_SCRIPT, ...args] },
       'powershell-block': {
         command: [...powershell, '-Command', `& ([scriptblock]::Create((Get-Content -Raw -LiteralPath '${POWERSHELL_SCRIPT}'))) ${args.map(powershellArgument).join(' ')}`],
       },
+      'powershell-terminal': {
+        command: inTerminal(`pwsh -NoLogo -NoProfile -File '${POWERSHELL_SCRIPT}' ${args.join(' ')}`),
+        input: typed ?? '',
+      },
     };
     const [command, ...commandArgs] = startWith[mode].command;
     const input = startWith[mode].input;
+    // In a terminal the answers are typed when the script asks, as a person does. script of macOS loses what is typed
+    // before the program reads the terminal.
+    const terminal = mode === 'bash-terminal' || mode === 'powershell-terminal';
     return new Promise((resolve, reject) => {
       const child = spawn(command, commandArgs, { cwd: folder, env: { ...environment(), ...changes }, stdio: ['pipe', 'pipe', 'pipe'] });
       // A script that stops early, for example on a wrong option, closes its input before it has all been sent.
       child.stdin.on('error', () => undefined);
-      child.stdin.end(input ?? '');
+      if (!terminal) child.stdin.end(input ?? '');
       let output = '';
       let errors = '';
-      child.stdout.on('data', (chunk: Buffer) => (output += chunk.toString('utf8')));
+      child.stdout.on('data', (chunk: Buffer) => {
+        output += chunk.toString('utf8');
+        if (terminal && child.stdin.writable && QUESTION.test(output)) child.stdin.end(input ?? '');
+      });
       child.stderr.on('data', (chunk: Buffer) => (errors += chunk.toString('utf8')));
       child.on('error', reject);
+      child.on('exit', () => child.stdin.end());
       child.on('close', (code) => resolve({ code, output, errors }));
     });
   }
@@ -223,6 +299,63 @@ describe.skipIf(!CAN_RUN)('data collector scripts against a pretend GitHub', () 
   const enterpriseArgs = (file: string) => ['--enterprise', 'octocorp', '--months', '2', '--teams', '--plain', '--yes', '--hostname', MOCK_HOST, '--output', file];
   const organizationArgs = (file: string) => ['--org', 'octo-org', '--months', '3', '--daily-metrics', '--yes', '--hostname', MOCK_HOST, '--output', file];
   const reportQueueArgs = (file: string) => ['--enterprise', 'octocorp', '--months', '3', '--only', 'usage-report', '--plain', '--yes', '--hostname', MOCK_HOST, '--output', file];
+  const networkArgs = (file: string) => ['--org', 'octo-org', '--only', 'seat-summary,user-metrics', '--months', '1', '--plain', '--yes', '--hostname', MOCK_HOST, '--output', file];
+  /** A proxy address where nothing listens, like a network that lets nothing through. */
+  const CLOSED_PROXY = 'http://127.0.0.1:1';
+
+  /**
+   * Puts a pretend curl first on PATH. Like curl on Windows when the network blocks the servers that tell if a
+   * certificate was revoked, it fails unless it is told to go on without that check. An old curl does not know that
+   * option at all.
+   */
+  function revocationCurl(oldCurl: boolean): NodeJS.ProcessEnv {
+    const programs = join(folder, oldCurl ? 'programs-old-curl' : 'programs-revocation-curl');
+    mkdirSync(programs, { recursive: true });
+    const script = [
+      '#!/usr/bin/env bash',
+      'arguments=()',
+      'best_effort=no',
+      'for argument in "$@"; do',
+      '  if [ "$argument" = --ssl-revoke-best-effort ]; then best_effort=yes; else arguments+=("$argument"); fi',
+      'done',
+      `if [ "$best_effort" = no ]; then echo '${REVOCATION_ERROR}' >&2; exit 35; fi`,
+      oldCurl ? `echo 'curl: option --ssl-revoke-best-effort: is unknown' >&2; exit 2` : '',
+      `exec '${findProgram('curl')}' "\${arguments[@]}"`,
+    ].join('\n');
+    writeFileSync(join(programs, 'curl'), `${script}\n`);
+    chmodSync(join(programs, 'curl'), 0o755);
+    return { PATH: `${programs}${delimiter}${process.env.PATH ?? ''}` };
+  }
+
+  /**
+   * Puts a pretend curl first on PATH that gets an answer only from the given addresses, like a network that blocks
+   * the rest. It sends nothing, so it suits only runs that stop before they read from GitHub.
+   */
+  function probeCurl(answering: string[]): NodeJS.ProcessEnv {
+    const programs = join(folder, `programs-probe-${answering.length}`);
+    mkdirSync(programs, { recursive: true });
+    const script = [
+      '#!/usr/bin/env bash',
+      'for argument in "$@"; do address="$argument"; done',
+      'case "$address" in',
+      ...answering.map((host) => `  https://${host}/) echo 000; exit 0 ;;`),
+      "  *) echo 'curl: (7) Failed to connect to the server' >&2; echo 000; exit 7 ;;",
+      'esac',
+    ].join('\n');
+    writeFileSync(join(programs, 'curl'), `${script}\n`);
+    chmodSync(join(programs, 'curl'), 0o755);
+    return { PATH: `${programs}${delimiter}${process.env.PATH ?? ''}` };
+  }
+
+  /** A folder with gh and pwsh but no curl, to use as PATH. */
+  function programsWithoutCurl(): string {
+    const programs = join(folder, 'programs-without-curl');
+    mkdirSync(programs, { recursive: true });
+    for (const name of ['gh', 'pwsh']) {
+      if (!existsSync(join(programs, name))) symlinkSync(findProgram(name), join(programs, name));
+    }
+    return programs;
+  }
 
   function expectSafeRequests(requests: RecordedRequest[], apiVersion: string | undefined) {
     expect(requests.length).toBeGreaterThan(0);
@@ -554,6 +687,61 @@ describe.skipIf(!CAN_RUN)('data collector scripts against a pretend GitHub', () 
     expect(rest.every((request) => request.apiVersion === GH_DEFAULT_API_VERSION)).toBe(true);
   }, RUN_TIMEOUT);
 
+  it('lists the download addresses that the network blocks', async () => {
+    mock.settings.blockDownloads = true;
+    const file = join(folder, 'blocked-download.ndjson');
+    const result = await run('bash', networkArgs(file));
+    expect(result.code, result.output + result.errors).toBe(0);
+    const failed = sourcesOf(readBundle(file), 'user-metrics').filter((line) => line.status === 'failed');
+    expect(failed).toHaveLength(1);
+    expect(failed[0].message).toBe(`${NETWORK_MESSAGES.download}${BLOCKED_HOST}: ${NETWORK_MESSAGES.proxy}403).`);
+    expect(sourcesOf(readBundle(file), 'seat-summary').every((line) => line.status === 'ok')).toBe(true);
+    expect(result.output).toContain(`\nNetwork\n  ${NETWORK_MESSAGES.unreachable}\n    ${BLOCKED_HOST}\n  ${NETWORK_MESSAGES.allow}\n`);
+    expect(result.output).toContain(NETWORK_MESSAGES.addresses);
+    expect(result.output).not.toContain(NETWORK_MESSAGES.revocation);
+    expect(leftoverWork()).toEqual([]);
+  }, RUN_TIMEOUT);
+
+  it('downloads without the revocation check when the network blocks it, and says so', async () => {
+    const file = join(folder, 'revocation.ndjson');
+    const result = await run('bash', networkArgs(file), revocationCurl(false));
+    expect(result.code, result.output + result.errors).toBe(0);
+    const bundle = readBundle(file);
+    expect(sourcesOf(bundle, 'user-metrics').map((line) => line.status)).toEqual(['ok']);
+    expect(bundle.records.filter((line) => line.kind === 'user-metrics')).toHaveLength(4);
+    expect(result.output).toContain(`  ${NETWORK_MESSAGES.revocation}\n  servers that answer this (CRL and OCSP):\n    ${MOCK_HOST}\n  ${NETWORK_MESSAGES.retried}\n`);
+    expect(result.output).not.toContain(NETWORK_MESSAGES.unreachable);
+    expect(networkCheck(result.output)).toEqual([
+      `${CHECK_MESSAGES.heading} (HTTPS, port 443)`,
+      checkLine(MOCK_HOST, CHECK_MESSAGES.answersWithoutRevocation),
+      `  ${CHECK_MESSAGES.revocation}`,
+      '  this (CRL and OCSP). The script goes on without this check.',
+    ]);
+  }, RUN_TIMEOUT);
+
+  it('checks the network before it asks anything, with one request that has no token', async () => {
+    const file = join(folder, 'network-check.ndjson');
+    const result = await run('bash', networkArgs(file));
+    expect(result.code, result.output + result.errors).toBe(0);
+    expect(networkCheck(result.output)).toEqual([`${CHECK_MESSAGES.heading} (HTTPS, port 443)`, checkLine(MOCK_HOST, 'answers')]);
+    const checks = mock.requests.filter((request) => request.path === '/');
+    expect(checks).toHaveLength(1);
+    expect(mock.requests[0]).toBe(checks[0]);
+    expect(checks[0].method).toBe('GET');
+    expect(checks[0].authorization).toBeUndefined();
+  }, RUN_TIMEOUT);
+
+  it('names the GitHub address it cannot reach', async () => {
+    const result = await run('bash', ['--org', 'octo-org', '--only', 'seat-summary', '--yes', '--hostname', MOCK_HOST], { HTTPS_PROXY: CLOSED_PROXY, https_proxy: CLOSED_PROXY });
+    expect(result.code).toBe(1);
+    expect(networkCheck(result.output)[1]).toMatch(new RegExp(`^ {2}${MOCK_HOST.replace('.', '\\.')} +${CHECK_MESSAGES.noAnswer}\\S`));
+    expect(networkCheck(result.output)).toContain(`  ${CHECK_MESSAGES.oneBlocked}`);
+    expect(result.errors).toContain(`Could not reach ${MOCK_HOST}: `);
+    expect(result.errors).toContain(`If your network blocks ${MOCK_HOST}${NETWORK_MESSAGES.loginHint}`);
+    expect(mock.requests).toHaveLength(0);
+    expect(leftoverWork()).toEqual([]);
+  }, RUN_TIMEOUT);
+
   it('runs the same when piped into bash, as the command from the app does', async () => {
     const fileRun = join(folder, 'bash-from-file.ndjson');
     const pipedRun = join(folder, 'bash-from-pipe.ndjson');
@@ -579,6 +767,10 @@ describe.skipIf(!CAN_RUN)('data collector scripts against a pretend GitHub', () 
     const result = await run('bash-terminal', ['--org', 'octo-org', '--only', 'seat-summary', '--months', '3', '--plain', '--hostname', MOCK_HOST, '--output', file], { TERM: 'xterm' }, `y\ntouch '${marker}'\n`);
     expect(result.code, result.output).toBe(0);
     expect(result.output).toContain('Ready to read');
+    expect(result.output.indexOf(CHECK_MESSAGES.heading)).toBeGreaterThan(-1);
+    expect(result.output.indexOf(CHECK_MESSAGES.heading)).toBeLessThan(result.output.indexOf('Ready to read'));
+    expect(result.output).toContain('Network:  HTTPS (port 443)');
+    expect(networkAddresses(result.output)).toEqual([MOCK_HOST]);
     expect(result.output).toContain('Start?');
     // In a terminal the step line moves while the step works, and the helper that moves it stops without a word.
     expect(result.output).toMatch(/\r {2}Seat totals and policies +[|/\\-]/);
@@ -586,6 +778,27 @@ describe.skipIf(!CAN_RUN)('data collector scripts against a pretend GitHub', () 
     expect(result.output).not.toContain('Terminated');
     expect(readBundle(file).header).toMatchObject({ scope: 'organization', organizations: ['octo-org'] });
     expect(existsSync(marker)).toBe(false);
+    expect(leftoverWork()).toEqual([]);
+  }, RUN_TIMEOUT);
+
+  it.skipIf(!HAS_SCRIPT)('asks to go on when an address does not answer, but not when the GitHub API does not', async () => {
+    const reportAddresses = ['copilot-reports.github.com', 'mbproduction.blob.core.windows.net'];
+    const stopped = await run('bash-terminal', ['--enterprise', 'octocorp'], { ...probeCurl(['api.github.com']), TERM: 'xterm' }, 'n\n');
+    expect(stopped.code, stopped.output).toBe(0);
+    const check = networkCheck(stopped.output);
+    expect(check).toContain(checkLine('api.github.com', 'answers'));
+    for (const address of reportAddresses) expect(check).toContain(checkLine(address, `${CHECK_MESSAGES.noAnswer}curl: (7) Failed to connect to the server`));
+    expect(check).toContain(checkLine('copilot-reports-*.b01.azurefd.net', CHECK_MESSAGES.notChecked));
+    expect(check).toContain('  2 addresses did not answer, so the data that needs them may be missing.');
+    expect(check).toContain(`  ${NETWORK_MESSAGES.addresses}`);
+    expect(stopped.output).toContain(CHECK_MESSAGES.goOn);
+    expect(stopped.output).toContain(CHECK_MESSAGES.stopped);
+    expect(mock.requests).toHaveLength(0);
+
+    const failed = await run('bash-terminal', ['--enterprise', 'octocorp'], { ...probeCurl([]), TERM: 'xterm' }, 'y\n');
+    expect(failed.code, failed.output).toBe(1);
+    expect(networkCheck(failed.output)).toContain('  3 addresses did not answer, so the data that needs them may be missing.');
+    expect(failed.output).not.toContain(CHECK_MESSAGES.goOn);
     expect(leftoverWork()).toEqual([]);
   }, RUN_TIMEOUT);
 
@@ -611,6 +824,8 @@ describe.skipIf(!CAN_RUN)('data collector scripts against a pretend GitHub', () 
         const powershellRequests = requestLines(mock.requests);
         expect(powershellRequests, name).toEqual(bashRequests);
         expectSafeRequests(mock.requests, '2026-03-10');
+        expect(networkCheck(powershellResult.output), name).toEqual([`${CHECK_MESSAGES.heading} (HTTPS, port 443)`, checkLine(MOCK_HOST, 'answers')]);
+        expect(networkCheck(bashResult.output), name).toEqual(networkCheck(powershellResult.output));
 
         const bashBundle = readBundle(bashFile);
         const powershellBundle = readBundle(powershellFile);
@@ -646,23 +861,93 @@ describe.skipIf(!CAN_RUN)('data collector scripts against a pretend GitHub', () 
       expect(failed.errors).toContain('is not valid');
     }, RUN_TIMEOUT);
 
-    it('downloads the report files without curl', async () => {
-      const programs = join(folder, 'programs-without-curl');
-      mkdirSync(programs, { recursive: true });
-      for (const name of ['gh', 'pwsh']) {
-        if (!existsSync(join(programs, name))) symlinkSync(findProgram(name), join(programs, name));
-      }
+    it.skipIf(!DOTNET_TRUSTS_TEST_CERTIFICATE)('downloads the report files without curl', async () => {
       const bashFile = join(folder, 'bash-download.ndjson.gz');
       const powershellFile = join(folder, 'powershell-download.ndjson.gz');
       mock.reset();
       expect((await run('bash', organizationArgs(bashFile))).code).toBe(0);
       mock.reset();
-      const result = await run('powershell', powershellArgs(organizationArgs(powershellFile)), { PATH: programs });
+      const result = await run('powershell', powershellArgs(organizationArgs(powershellFile)), { PATH: programsWithoutCurl() });
       expect(result.errors).toBe('');
       expect(result.code, result.output).toBe(0);
       expect(requestsTo(mock.requests, '/downloads/users-28-day.ndjson.gz')).toHaveLength(1);
       expectSafeRequests(mock.requests, '2026-03-10');
       expect(comparable(readBundle(powershellFile))).toEqual(comparable(readBundle(bashFile)));
+      expect(leftoverWork()).toEqual([]);
+    }, RUN_TIMEOUT);
+
+    it('lists the blocked download addresses as bash does', async () => {
+      const bashFile = join(folder, 'bash-blocked.ndjson');
+      const powershellFile = join(folder, 'powershell-blocked.ndjson');
+      mock.settings.blockDownloads = true;
+      const bashResult = await run('bash', networkArgs(bashFile));
+      expect(bashResult.code, bashResult.output).toBe(0);
+      mock.reset();
+      mock.settings.blockDownloads = true;
+      const result = await run('powershell', powershellArgs(networkArgs(powershellFile)));
+      expect(result.errors).toBe('');
+      expect(result.code, result.output).toBe(0);
+      expect(comparable(readBundle(powershellFile))).toEqual(comparable(readBundle(bashFile)));
+      const networkPart = (output: string) => output.slice(output.indexOf('\nNetwork\n'), output.indexOf('Saved:'));
+      expect(networkPart(result.output)).toContain(`  ${NETWORK_MESSAGES.unreachable}\n    ${BLOCKED_HOST}\n`);
+      expect(networkPart(result.output)).toEqual(networkPart(bashResult.output));
+
+      // .NET downloads the files when there is no curl, and names the refused address as well.
+      mock.reset();
+      mock.settings.blockDownloads = true;
+      const dotNetFile = join(folder, 'powershell-blocked-dotnet.ndjson');
+      const dotNetResult = await run('powershell', powershellArgs(networkArgs(dotNetFile)), { PATH: programsWithoutCurl() });
+      expect(dotNetResult.code, dotNetResult.output).toBe(0);
+      const dotNetFailures = sourcesOf(readBundle(dotNetFile), 'user-metrics').filter((line) => line.status === 'failed');
+      expect(dotNetFailures).toHaveLength(1);
+      expect(dotNetFailures[0].message).toContain(`${NETWORK_MESSAGES.download}${BLOCKED_HOST}: `);
+      expect(networkPart(dotNetResult.output)).toEqual(networkPart(bashResult.output));
+      expect(leftoverWork()).toEqual([]);
+    }, RUN_TIMEOUT);
+
+    for (const oldCurl of [false, true]) {
+      const name = oldCurl
+        ? 'downloads with .NET when curl is too old to go on without the revocation check'
+        : 'downloads without the revocation check as bash does';
+      it.skipIf(oldCurl && !DOTNET_TRUSTS_TEST_CERTIFICATE)(name, async () => {
+        const bashFile = join(folder, `bash-revocation-${oldCurl}.ndjson`);
+        const bashResult = await run('bash', networkArgs(bashFile), revocationCurl(false));
+        expect(bashResult.code, bashResult.output).toBe(0);
+        const networkPart = (output: string) => output.slice(output.indexOf('\nNetwork\n'), output.indexOf('Saved:'));
+        expect(networkPart(bashResult.output)).toContain(NETWORK_MESSAGES.retried);
+        const powershellFile = join(folder, `powershell-revocation-${oldCurl}.ndjson`);
+        mock.reset();
+        const result = await run('powershell', powershellArgs(networkArgs(powershellFile)), revocationCurl(oldCurl));
+        expect(result.errors).toBe('');
+        expect(result.code, result.output).toBe(0);
+        expect(comparable(readBundle(powershellFile))).toEqual(comparable(readBundle(bashFile)));
+        expect(networkPart(result.output)).toEqual(networkPart(bashResult.output));
+        expect(networkCheck(result.output)).toEqual(networkCheck(bashResult.output));
+        expect(requestsTo(mock.requests, '/downloads/users-28-day.ndjson.gz')).toHaveLength(1);
+        expect(leftoverWork()).toEqual([]);
+      }, RUN_TIMEOUT);
+    }
+
+    it('names the GitHub address it cannot reach', async () => {
+      const result = await run('powershell', ['-Org', 'octo-org', '-Only', 'seat-summary', '-Yes', '-Hostname', MOCK_HOST], { HTTPS_PROXY: CLOSED_PROXY, https_proxy: CLOSED_PROXY });
+      expect(result.code).toBe(1);
+      expect(networkCheck(result.output)[1]).toMatch(new RegExp(`^ {2}${MOCK_HOST.replace('.', '\\.')} +${CHECK_MESSAGES.noAnswer}\\S`));
+      expect(networkCheck(result.output)).toContain(`  ${CHECK_MESSAGES.oneBlocked}`);
+      expect(result.errors).toContain(`Could not reach ${MOCK_HOST}: `);
+      expect(result.errors).toContain(`If your network blocks ${MOCK_HOST}${NETWORK_MESSAGES.loginHint}`);
+      expect(mock.requests).toHaveLength(0);
+    }, RUN_TIMEOUT);
+
+    it.skipIf(!HAS_SCRIPT)('asks to go on when an address does not answer, as bash does', async () => {
+      const args = ['--enterprise', 'octocorp'];
+      const bashResult = await run('bash-terminal', args, { ...probeCurl(['api.github.com']), TERM: 'xterm' }, 'n\n');
+      expect(bashResult.code, bashResult.output).toBe(0);
+      const result = await run('powershell-terminal', powershellArgs(args), { ...probeCurl(['api.github.com']), TERM: 'xterm' }, 'n\n');
+      expect(result.code, result.output).toBe(0);
+      expect(networkCheck(result.output)).toEqual(networkCheck(bashResult.output));
+      expect(result.output).toContain(CHECK_MESSAGES.goOn);
+      expect(result.output).toContain(CHECK_MESSAGES.stopped);
+      expect(mock.requests).toHaveLength(0);
       expect(leftoverWork()).toEqual([]);
     }, RUN_TIMEOUT);
 
@@ -694,10 +979,68 @@ describe.skipIf(!CAN_RUN)('data collector scripts against a pretend GitHub', () 
   });
 });
 
+/** The addresses after the Network line of --list-sources or of the plan, in order. */
+function networkAddresses(output: string): string[] {
+  const lines = output.replace(/\r/g, '').split('\n');
+  const start = lines.findIndex((line) => line.includes('Network:'));
+  if (start < 0) return [];
+  const addresses: string[] = [];
+  for (const line of lines.slice(start + 1)) {
+    const match = /^ {2,}(\S+) +\S/.exec(line);
+    if (match) addresses.push(match[1]);
+    else if (addresses.length > 0) break;
+  }
+  return addresses;
+}
+
+describe.skipIf(!HAS_BASH)('network addresses of the collector scripts', () => {
+  const HOSTS = ['github.com', 'octocorp.ghe.com', 'ghes.example.com'];
+  const listSources = (command: string, args: string[]) =>
+    spawnSync(command, args, { encoding: 'utf8', timeout: 60_000, env: { ...process.env, NO_COLOR: '1' } });
+  const bashList = (hostname?: string) => listSources(BASH, [BASH_SCRIPT, '--list-sources', ...(hostname === undefined ? [] : ['--hostname', hostname])]);
+  /** The addresses the app shows that the script itself uses, not the ones to get the script and sign in. */
+  const appAddresses = (hostname: string) =>
+    collectorAddresses({ ...DEFAULT_COLLECTOR_CHOICES, hostname })
+      .filter((entry) => !entry.beforeRun)
+      .map((entry) => entry.address);
+  const networkPart = (output: string) => {
+    const text = output.replace(/\r/g, '');
+    return text.slice(text.indexOf('Network:'));
+  };
+
+  it.each(HOSTS)('lists the same addresses for %s as the app', (hostname) => {
+    const result = bashList(hostname);
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toContain(`addresses for ${hostname}.`);
+    expect(networkAddresses(result.stdout)).toEqual(appAddresses(hostname));
+  });
+
+  it('cleans the host the same way as the app, and uses github.com without one', () => {
+    expect(networkAddresses(bashList('API.OctoCorp.GHE.com').stdout)).toEqual(appAddresses('API.OctoCorp.GHE.com'));
+    expect(networkAddresses(bashList().stdout)).toEqual(appAddresses(''));
+  });
+
+  it.skipIf(!POWERSHELL_WORKS)('lists the same addresses in PowerShell as in bash', () => {
+    for (const hostname of HOSTS) {
+      const powershell = listSources('pwsh', ['-NoLogo', '-NoProfile', '-NonInteractive', '-File', POWERSHELL_SCRIPT, '-ListSources', '-Hostname', hostname]);
+      expect(powershell.status, powershell.stderr).toBe(0);
+      expect(networkPart(powershell.stdout).replace('-Hostname shows', '--hostname shows'), hostname).toBe(networkPart(bashList(hostname).stdout));
+    }
+  }, RUN_TIMEOUT);
+});
+
 describe('data collector script messages the app reads', () => {
   it.each(['collect.sh', 'collect.ps1'])('%s writes the AI usage report messages the app knows', (name) => {
     const text = readFileSync(join(ROOT, 'scripts', name), 'utf8');
     expect(text).toContain(EMPTY_REPORT_MESSAGE);
     for (const start of REPORT_WAITING_MESSAGES) expect(text).toContain(start);
+  });
+
+  it.each(['collect.sh', 'collect.ps1'])('%s writes the same network notes, which point to the README', (name) => {
+    const text = readFileSync(join(ROOT, 'scripts', name), 'utf8');
+    for (const message of Object.values(NETWORK_MESSAGES)) expect(text).toContain(message);
+    for (const message of Object.values(CHECK_MESSAGES)) expect(text).toContain(message);
+    expect(text).toContain('--ssl-revoke-best-effort');
+    expect(readFileSync(join(ROOT, 'README.md'), 'utf8')).toMatch(/^#+ Network access$/m);
   });
 });

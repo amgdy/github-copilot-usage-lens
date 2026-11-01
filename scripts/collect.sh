@@ -57,6 +57,7 @@ with_teams=""
 daily_metrics=""
 plain="no"
 assume_yes="no"
+list_sources="no"
 interactive="no"
 
 work=""
@@ -74,6 +75,14 @@ context_target=""
 context_month=""
 context_parent=""
 report_day=""
+# Set by download (see there).
+revoke_best_effort="no"
+download_unreachable="no"
+# Used by print_addresses and check_network.
+address_indent=""
+blocked_count=0
+api_blocked="no"
+revocation_seen="no"
 # The step line moves while a step works, but only in a terminal (see main).
 progress="no"
 progress_room=0
@@ -132,7 +141,8 @@ Usage:
 To run it straight from GitHub, with no download, put the options after "bash -s --":
   curl -fsSL https://raw.githubusercontent.com/amgdy/github-copilot-usage-lens/main/scripts/collect.sh | bash -s -- [options]
 
-With no options, the script asks what to collect.
+With no options, the script asks what to collect. Before it asks anything, it checks that this computer can reach the
+network addresses it needs.
 
 Options:
   -e, --enterprise SLUG   Collect an enterprise. You must be an enterprise owner or billing manager.
@@ -147,7 +157,7 @@ Options:
       --plain             Save plain NDJSON text (.ndjson) instead of a compressed file.
       --skip LIST         Sources to leave out, separated by commas. See --list-sources.
       --only LIST         Collect only these sources, separated by commas.
-      --list-sources      Show every source and the access it needs, then stop.
+      --list-sources      Show every source, the access it needs and the network addresses, then stop.
   -y, --yes               Ask nothing. Use the options as given.
   -h, --help              Show this help.
       --version           Show the version of this script.
@@ -187,7 +197,60 @@ usage-report uses a report from the last 31 days when it covers the month and Gi
 Otherwise it asks GitHub to make one, which takes a few minutes and adds the report to the billing page. For the month
 the script runs in, it asks for a new one unless GitHub is still making one. GitHub makes one report at a time, so the
 script asks for the next month when the one before is ready. It changes no settings.
+
 EOF
+  say "Network: the script uses HTTPS (port 443) to these addresses for $host. If your network allows only some"
+  say "addresses, ask your network team to allow them before you run the script. --hostname shows them for another host."
+  print_addresses "  " all
+  say "GitHub can send report files from other addresses too. When the network blocks one, the summary lists it."
+}
+
+# The address of the GitHub API, for example api.github.com. GitHub Enterprise Server has it on its own host.
+api_host_name() {
+  case "$host" in
+    github.com | *.ghe.com) printf 'api.%s' "$host" ;;
+    *) printf '%s' "$host" ;;
+  esac
+}
+
+# each_address MODE ACTION: calls ACTION ADDRESS PURPOSE for each address the script uses, from the GitHub Copilot
+# allowlist reference in the GitHub Docs. With MODE "all" it gives them for every source, else only for the sources of
+# this run.
+each_address() {
+  local action="$2" reports="yes" usage_report="yes"
+  if [ "$1" != all ]; then
+    if ! wants user-metrics && ! wants scope-metrics && ! wants user-teams; then
+      reports="no"
+    fi
+    if [ -z "$enterprise" ] || ! wants usage-report; then
+      usage_report="no"
+    fi
+  fi
+  "$action" "$(api_host_name)" "the GitHub API"
+  if [ "$reports" = yes ]; then
+    case "$host" in
+      github.com)
+        "$action" "copilot-reports.github.com" "activity report files"
+        "$action" "copilot-reports-*.b01.azurefd.net" "activity report files, backup route"
+        "$action" "usagereports*.blob.core.windows.net" "activity report files, backup route"
+        ;;
+      *.ghe.com) "$action" "*.$host" "activity report files" ;;
+    esac
+  fi
+  # GitHub Docs do not name this one. It is the storage of the AI usage report download links at the time of writing.
+  if [ "$usage_report" = yes ] && [ "$host" = github.com ]; then
+    "$action" "mbproduction.blob.core.windows.net" "AI usage report files"
+  fi
+}
+
+# Prints the addresses the script uses, one per line after INDENT. MODE is the same as for each_address.
+print_addresses() {
+  address_indent="$1"
+  each_address "$2" address_line
+}
+
+address_line() {
+  printf '%s%-37s %s\n' "$address_indent" "$1" "$2"
 }
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -234,7 +297,7 @@ while [ "$#" -gt 0 ]; do
     --skip=*) skip_sources="$skip_sources$(as_words "${1#*=}")"; shift ;;
     --only) need_value "$@"; only_sources="$only_sources$(as_words "$2")"; shift 2 ;;
     --only=*) only_sources="$only_sources$(as_words "${1#*=}")"; shift ;;
-    --list-sources) show_sources; exit 0 ;;
+    --list-sources) list_sources="yes"; shift ;;
     -y | --yes) assume_yes="yes"; shift ;;
     -h | --help) show_help; exit 0 ;;
     --version) say "collect.sh $COLLECTOR_VERSION"; exit 0 ;;
@@ -612,10 +675,31 @@ JQ_WRAP='def wrap(kind): {kind: kind, scope: env.LENS_SCOPE, target: env.LENS_TA
   + (if (env.LENS_MONTH // "") == "" then {} else {month: env.LENS_MONTH} end)
   + (if (env.LENS_PARENT // "") == "" then {} else {parent: env.LENS_PARENT} end);'
 
+# remember_host LIST HOST: adds HOST once to a list in the temporary folder. "unreachable" holds the addresses this
+# computer could not reach, "revocation" those whose certificate Windows could not check (see download).
+remember_host() {
+  [ -n "$2" ] || return 0
+  grep -qxF "$2" "$work/$1" 2>/dev/null || printf '%s\n' "$2" >>"$work/$1"
+}
+
+# The host of a link, for example copilot-reports.github.com.
+link_host() {
+  local rest="${1#*://}"
+  rest="${rest%%[/?#]*}"
+  printf '%s' "${rest##*@}"
+}
+
+# The host that gh got no answer from. gh says "error connecting to HOST" when it cannot find the name, and
+# 'Get "https://HOST/...": ...' for the other network errors.
+gh_unreachable_host() {
+  tr -d '\r' <"$work/stderr" | sed -n -e 's/^\(gh: \)\{0,1\}error connecting to \([^ ]*\).*/\2/p' \
+    -e 's/^\(gh: \)\{0,1\}[A-Z][a-z]* "https:\/\/\([^/"]*\).*/\2/p' | head -n 1
+}
+
 # Runs "gh api" with the other arguments and writes what it prints to the file in $1. Tries again when GitHub is busy.
 # Sets last_http (200 when it worked, 0 when unknown) and last_error.
 run_gh() {
-  local output_file="$1" attempt=1 exit_code wait_seconds
+  local output_file="$1" attempt=1 exit_code wait_seconds retry
   shift
   while :; do
     start_ticker "$output_file"
@@ -638,15 +722,20 @@ run_gh() {
     if [ -z "$last_error" ]; then
       last_error="gh stopped with exit code $exit_code"
     fi
-    if [ "$attempt" -ge 3 ]; then
+    retry="no"
+    if [ "$attempt" -lt 3 ]; then
+      case "$last_http" in
+        429 | 500 | 502 | 503 | 504) retry="yes" ;;
+        403) grep -qi 'rate limit' "$work/stderr" && retry="yes" ;;
+        0) grep -qiE 'timeout|timed out|connection reset|unexpected EOF|TLS handshake' "$work/stderr" && retry="yes" ;;
+      esac
+    fi
+    if [ "$retry" != yes ]; then
+      if [ "$last_http" = 0 ]; then
+        remember_host unreachable "$(gh_unreachable_host)"
+      fi
       return 1
     fi
-    case "$last_http" in
-      429 | 500 | 502 | 503 | 504) ;;
-      403) grep -qi 'rate limit' "$work/stderr" || return 1 ;;
-      0) grep -qiE 'timeout|timed out|connection reset|unexpected EOF|TLS handshake' "$work/stderr" || return 1 ;;
-      *) return 1 ;;
-    esac
     wait_seconds=$((attempt * attempt * RETRY_SECONDS))
     if [ "$progress" = yes ] && [ "$step_active" = yes ]; then
       progress_note="busy, waiting $wait_seconds s"
@@ -728,20 +817,48 @@ fetch_pages() {
 }
 
 # Downloads a report file. Only https links are followed. The links are signed, so no token is sent with them.
+# Sets download_unreachable to yes when no answer came from the server, so the network may block it.
 download() {
   case "$1" in
     https://*) ;;
     *) return 1 ;;
   esac
-  local exit_code
+  local exit_code proxy_answer
+  download_unreachable="no"
   start_ticker "" "$2"
   if command -v curl >/dev/null 2>&1; then
-    curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --retry 2 \
-      --connect-timeout 30 --output "$2" "$1" 2>"$work/download-error"
+    curl_download "$1" "$2"
     exit_code=$?
+    # curl with Windows security (Schannel) checks if the certificate was revoked. When the network blocks the servers
+    # that answer this (CRL and OCSP), it tries again and goes on when only that check cannot be done.
+    if [ "$exit_code" -ne 0 ] && revocation_error; then
+      remember_host revocation "$(link_host "$1")"
+      if [ "$revoke_best_effort" != yes ]; then
+        revoke_best_effort="yes"
+        curl_download "$1" "$2"
+        exit_code=$?
+      fi
+    fi
+    if [ "$exit_code" -ne 0 ]; then
+      # A proxy that does not let the script reach the host answers CONNECT with an error, such as 403.
+      proxy_answer=$(tail -n 1 "$work/download-connect" 2>/dev/null | tr -d '\r')
+      case "$proxy_answer" in
+        2??) ;;
+        [1-9][0-9][0-9])
+          download_unreachable="yes"
+          printf 'The network proxy refused the connection (HTTP %s).' "$proxy_answer" >"$work/download-error"
+          ;;
+      esac
+    fi
+    case "$exit_code" in
+      5 | 6 | 7 | 28 | 35 | 52 | 55 | 56 | 60 | 97) revocation_error || download_unreachable="yes" ;;
+    esac
   elif command -v wget >/dev/null 2>&1; then
     wget -q -O "$2" "$1" 2>"$work/download-error"
     exit_code=$?
+    case "$exit_code" in
+      4 | 5) download_unreachable="yes" ;;
+    esac
   else
     printf 'Install curl or wget to download the activity reports.' >"$work/download-error"
     exit_code=1
@@ -749,6 +866,52 @@ download() {
   stop_ticker
   progress_note=""
   return "$exit_code"
+}
+
+curl_download() {
+  local extra=""
+  if [ "$revoke_best_effort" = yes ]; then
+    extra="--ssl-revoke-best-effort"
+  fi
+  curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --retry 2 \
+    --connect-timeout 30 ${extra:+"$extra"} --write-out '%{http_connect}\n' --output "$2" "$1" \
+    >"$work/download-connect" 2>"$work/download-error"
+}
+
+# curl_probe ADDRESS: sends one GET to https://ADDRESS/, with no token and no redirect. Any HTTP answer, even an error
+# page, makes curl stop with 0.
+curl_probe() {
+  local extra=""
+  if [ "$revoke_best_effort" = yes ]; then
+    extra="--ssl-revoke-best-effort"
+  fi
+  curl --silent --show-error --proto '=https' --connect-timeout 10 --max-time 15 ${extra:+"$extra"} \
+    --write-out '%{http_connect}\n' --output "$work/probe" "https://$1/" \
+    >"$work/download-connect" 2>"$work/download-error"
+}
+
+revocation_error() {
+  grep -qE 'CRYPT_E_(NO_REVOCATION_CHECK|REVOCATION_OFFLINE)' "$work/download-error" 2>/dev/null
+}
+
+# download_failed SOURCE RECORDS LINK ENDPOINT: notes a report file that could not be downloaded.
+download_failed() {
+  local link_name
+  link_name=$(link_host "$3")
+  if [ "$download_unreachable" = yes ]; then
+    remember_host unreachable "$link_name"
+  fi
+  add_status "$1" failed "$2" 0 "Could not download the report file from $link_name: $(download_error_line)" "$4"
+}
+
+# The error of the last download. curl may first warn that it tries again, so its own error line comes first.
+download_error_line() {
+  local line
+  line=$(tr -d '\r' <"$work/download-error" 2>/dev/null | grep '^curl: (' | tail -n 1)
+  if [ -z "$line" ]; then
+    line=$(head -n 1 "$work/download-error" 2>/dev/null | tr -d '\r')
+  fi
+  printf '%s' "$line"
 }
 
 # Adds every JSON line of a report file as one record. A file that is not one object per line becomes one record.
@@ -810,8 +973,7 @@ fetch_report() {
   while IFS= read -r link <&3; do
     rm -f "$work/download" "$work/report.txt"
     if ! download "$link" "$work/download"; then
-      add_status "$source_id" failed "$count" 0 \
-        "Could not download the report file: $(head -n 1 "$work/download-error" 2>/dev/null)" "$endpoint"
+      download_failed "$source_id" "$count" "$link" "$endpoint"
       return 1
     fi
     magic=$(head -c 2 "$work/download" | od -An -tx1 | tr -d ' \n')
@@ -1291,8 +1453,7 @@ download_usage_report() {
     file_number=$((file_number + 1))
     rm -f "$work/download" "$work/report.txt"
     if ! download "$link" "$work/download"; then
-      add_status usage-report failed 0 0 \
-        "Could not download the report file: $(head -n 1 "$work/download-error" 2>/dev/null)" "$endpoint"
+      download_failed usage-report 0 "$link" "$endpoint"
       return 1
     fi
     magic=$(head -c 2 "$work/download" | od -An -tx1 | tr -d ' \n')
@@ -1552,6 +1713,95 @@ check_gh() {
   fi
 }
 
+# probe_address ADDRESS PURPOSE: prints the address and if it answers. A name with * is not checked, because GitHub
+# picks the full name only when it sends a file.
+probe_address() {
+  local probe_exit probe_revocation="no" proxy_answer reason
+  printf '  %-37s ' "$1"
+  case "$1" in
+    *"*"*)
+      say "not checked: GitHub picks the full name when it sends a file"
+      return 0
+      ;;
+  esac
+  curl_probe "$1"
+  probe_exit=$?
+  # As in download: when the network blocks the servers that say if a certificate was revoked, try without that check.
+  if [ "$probe_exit" -ne 0 ] && revocation_error; then
+    probe_revocation="yes"
+    revocation_seen="yes"
+    remember_host revocation "$1"
+    if [ "$revoke_best_effort" != yes ]; then
+      revoke_best_effort="yes"
+      curl_probe "$1"
+      probe_exit=$?
+    fi
+  fi
+  if [ "$probe_exit" -eq 0 ]; then
+    if [ "$probe_revocation" = yes ]; then
+      say "answers, without the revocation check"
+    else
+      say "answers"
+    fi
+    return 0
+  fi
+  reason=$(download_error_line)
+  proxy_answer=$(tail -n 1 "$work/download-connect" 2>/dev/null | tr -d '\r')
+  case "$proxy_answer" in
+    2??) ;;
+    [1-9][0-9][0-9]) reason="The network proxy refused the connection (HTTP $proxy_answer)." ;;
+  esac
+  if [ -z "$reason" ]; then
+    reason="curl stopped with exit code $probe_exit."
+  fi
+  blocked_count=$((blocked_count + 1))
+  if [ "$1" = "$(api_host_name)" ]; then
+    api_blocked="yes"
+  fi
+  say "no answer: $reason"
+}
+
+# Before it asks anything, checks that this computer can reach the addresses the script needs. gh can still work when
+# curl cannot, for example with a company certificate that only the system knows, so a blocked address only stops the
+# script when the admin says so. When the GitHub API does not answer, the sign-in check says what is wrong.
+check_network() {
+  local mode="all"
+  if [ -n "$enterprise" ] || [ -n "$organizations" ]; then
+    mode="run"
+  fi
+  say ""
+  say "${bold}Checking the network${reset} (HTTPS, port 443)"
+  if ! command -v curl >/dev/null 2>&1; then
+    note "  Skipped, because curl is not installed."
+    return 0
+  fi
+  blocked_count=0
+  api_blocked="no"
+  revocation_seen="no"
+  each_address "$mode" probe_address
+  if [ "$revocation_seen" = yes ]; then
+    say "  Windows could not check if the certificates were revoked, because the network blocks the servers that answer"
+    say "  this (CRL and OCSP). The script goes on without this check."
+  fi
+  if [ "$blocked_count" -eq 0 ]; then
+    return 0
+  fi
+  if [ "$blocked_count" -eq 1 ]; then
+    say "  1 address did not answer, so the data that needs it may be missing."
+    say "  Ask your network team to allow HTTPS (port 443) to it."
+  else
+    say "  $blocked_count addresses did not answer, so the data that needs them may be missing."
+    say "  Ask your network team to allow HTTPS (port 443) to them."
+  fi
+  say "  Every address the script uses: https://github.com/amgdy/github-copilot-usage-lens#network-access"
+  if [ "$interactive" = yes ] && [ "$api_blocked" != yes ]; then
+    if ! ask_yes_no "Go on anyway?" y; then
+      say "Stopped. Nothing was saved."
+      exit 0
+    fi
+  fi
+}
+
 # Prints the name of the variable that gh takes its token from, when one is set.
 token_variable() {
   case "$host" in
@@ -1588,6 +1838,9 @@ check_login() {
       say "${red}You are not signed in to $host with the GitHub CLI.${reset} Sign in, then run this script again:"
       say "  gh auth login --hostname $host"
       exit 1
+    fi
+    if [ -s "$work/unreachable" ]; then
+      fail "Could not reach $host: $last_error. If your network blocks $(head -n 1 "$work/unreachable"), ask your network team to allow HTTPS (port 443) to it."
     fi
     fail "Could not reach $host: $last_error"
   fi
@@ -1863,6 +2116,8 @@ confirm_plan() {
     say "  Report:   the AI usage report of each month. GitHub makes it if there is no recent one."
   fi
   say "  File:     $output"
+  say "  Network:  HTTPS (port 443) to these addresses. If your network allows only some addresses, ask to allow them."
+  print_addresses "              " run
   if ! ask_yes_no "Start?" y; then
     say "Stopped. Nothing was saved."
     exit 0
@@ -1914,6 +2169,27 @@ size_text() {
   }'
 }
 
+# Lists the addresses that the network blocked, so the admin can ask to have them allowed.
+print_network_help() {
+  if [ ! -s "$work/unreachable" ] && [ ! -s "$work/revocation" ]; then
+    return 0
+  fi
+  say ""
+  say "${bold}Network${reset}"
+  if [ -s "$work/unreachable" ]; then
+    say "  This computer could not reach these addresses, so some data is missing:"
+    sed 's/^/    /' "$work/unreachable"
+    say "  Ask your network team to allow HTTPS (port 443) to them, then run this script again."
+  fi
+  if [ -s "$work/revocation" ]; then
+    say "  Windows could not check if the certificates of these addresses were revoked, because the network blocks the"
+    say "  servers that answer this (CRL and OCSP):"
+    sed 's/^/    /' "$work/revocation"
+    say "  The script tried again without this check. To keep the check, ask your network team to allow those servers."
+  fi
+  say "  Every address the script uses: https://github.com/amgdy/github-copilot-usage-lens#network-access"
+}
+
 print_summary() {
   say ""
   say "${bold}Summary${reset}"
@@ -1950,6 +2226,7 @@ print_summary() {
         printf "  %-16s %-8s %9d  %s\n", id, result, records[id], text
       }
     }' "$work/status.tsv"
+  print_network_help
   if [ "$1" != yes ]; then
     return 0
   fi
@@ -2001,6 +2278,10 @@ use_terminal_for_answers() {
 main() {
   local name
   check_options
+  if [ "$list_sources" = yes ]; then
+    show_sources
+    exit 0
+  fi
   use_terminal_for_answers
   if [ "$assume_yes" != yes ] && [ -t 0 ] && [ -t 1 ]; then
     interactive="yes"
@@ -2029,6 +2310,8 @@ main() {
   say "${bold}GitHub Copilot Usage Lens: data collector${reset} ${dim}$COLLECTOR_VERSION${reset}"
   note "It changes no settings on GitHub, and the file stays on this computer."
   check_gh
+  select_sources
+  check_network
   check_login
   say "Signed in to $host as ${bold}${login:-unknown}${reset}."
   if [ "$interactive" = yes ] && [ -z "$enterprise" ] && [ -z "$organizations" ]; then

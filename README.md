@@ -151,8 +151,48 @@ The scripts only read. They change no settings on GitHub and send your data nowh
    - Linux: follow [Installing gh on Linux](https://github.com/cli/cli/blob/trunk/docs/install_linux.md).
 2. Sign in once with `gh auth login`. For GitHub Enterprise Cloud with data residency, add `--hostname NAME.ghe.com`.
 3. Use an account that is an enterprise owner or billing manager, or an organization owner or billing manager.
+4. If your network allows only some addresses, ask your network team to allow the addresses in [Network access](#network-access).
 
 You do not need to know the token scopes. The script checks your sign-in and, when a scope is missing, offers to add it with `gh auth refresh`, which opens GitHub in your browser.
+
+### Network access
+
+The script uses HTTPS (port 443). If your network allows only some addresses, ask your network team to allow these before you run it:
+
+| Address | What it is used for |
+| --- | --- |
+| `raw.githubusercontent.com` | Only to get the script with the commands in [Run it](#run-it). |
+| `github.com` (with data residency: `SUBDOMAIN.ghe.com`) | Only to sign in with `gh auth login`. |
+| `api.github.com`. With data residency: `api.SUBDOMAIN.ghe.com`. GitHub Enterprise Server: your server. | Every request to GitHub, through `gh`. |
+| `copilot-reports.github.com` (with data residency: `*.SUBDOMAIN.ghe.com`) | The activity report files, of the sources `user-metrics`, `scope-metrics` and `user-teams`. |
+| `copilot-reports-*.b01.azurefd.net` and `usagereports*.blob.core.windows.net` | The same files, when GitHub sends them by its backup route. |
+| `mbproduction.blob.core.windows.net` | The AI usage report files of `usage-report`, for an enterprise on GitHub.com. GitHub does not name this address in its docs. It is the one in the download links at the time of writing. |
+
+The report addresses come from the GitHub Docs page [GitHub Copilot allowlist reference](https://docs.github.com/en/copilot/reference/copilot-allowlist-reference). With data residency, allowing `*.SUBDOMAIN.ghe.com` and `SUBDOMAIN.ghe.com` covers the GitHub addresses.
+
+You can see the list for your host before you run anything:
+
+- In the app, the command maker shows it for your choices under **Does your network allow only some addresses?**
+- `--list-sources --hostname HOST` (`-ListSources -Hostname HOST`) prints it and stops. It sends no request to GitHub.
+- The plan the script shows before it asks to start lists the addresses of that run.
+
+When the script starts, before it asks anything, it checks that it can reach these addresses. It sends one HTTPS request with no token to each one and prints `answers` or `no answer` with the reason, for example:
+
+```text
+Checking the network (HTTPS, port 443)
+  api.github.com                        answers
+  copilot-reports.github.com            no answer: The network proxy refused the connection (HTTP 403).
+  copilot-reports-*.b01.azurefd.net     not checked: GitHub picks the full name when it sends a file
+```
+
+It cannot check an address with a `*`, because GitHub picks the full name only when it sends a file. It does not check `raw.githubusercontent.com` or `github.com`, which are only needed to get the script and to sign in. If an address does not answer, the script says that the data that needs it may be missing and asks **Go on anyway?**. With `--yes` (`-Yes`) it goes on without asking. If the GitHub API does not answer, it does not ask, and the sign-in check names the problem.
+
+GitHub can send report files from other addresses too. When the script cannot reach an address, for example because a firewall or proxy blocks it, the note of that source names it, for example `Could not download the report file from copilot-reports.github.com: The network proxy refused the connection (HTTP 403).`, and the summary lists every such address under **Network**. If it cannot reach the GitHub API, it stops at once and names the address.
+
+On Windows, curl checks if the certificate of each download address was revoked. When the network blocks the servers that answer this (CRL and OCSP), curl stops with `CRYPT_E_NO_REVOCATION_CHECK` or `CRYPT_E_REVOCATION_OFFLINE`. The script then tries again with `--ssl-revoke-best-effort`, which goes on only when the check cannot be done; a revoked certificate still stops it. If your curl is older than 7.70 and does not know that option, `collect.ps1` downloads the files with .NET, which, like `gh`, does not do this check. The summary names these addresses too. To keep the full check, ask your network team to allow the revocation servers named in the certificates. They answer over HTTP (port 80). At the time of writing, these are:
+
+- `*.c.lencr.org` (Let's Encrypt) for `copilot-reports.github.com`.
+- `oneocsp.microsoft.com`, `www.microsoft.com` and `crl2.microsoft.com`, and `ocsp.digicert.com` and `crl3.digicert.com` for the root, for `mbproduction.blob.core.windows.net`.
 
 ### Run it
 
@@ -172,7 +212,7 @@ powershell -ExecutionPolicy Bypass -Command "& ([scriptblock]::Create((irm https
 
 `-ExecutionPolicy Bypass` lets Windows run this one script and changes no settings. You can read [collect.sh](https://github.com/amgdy/github-copilot-usage-lens/blob/main/scripts/collect.sh) and [collect.ps1](https://github.com/amgdy/github-copilot-usage-lens/blob/main/scripts/collect.ps1) on GitHub before you run them. The command maker in the app points the command at the scripts of the app version you use, so the file always fits the app.
 
-With no options, the script asks what to read. It lists the enterprises and organizations you manage, asks whether to get the AI usage report (enterprises only), asks how many months to read, shows the plan and waits for your OK. To give the options yourself, put them after `bash -s --` on macOS and Linux, or before the last quote on Windows:
+With no options, the script first checks the network (see [Network access](#network-access)), then asks what to read. It lists the enterprises and organizations you manage, asks whether to get the AI usage report (enterprises only), asks how many months to read, shows the plan and waits for your OK. To give the options yourself, put them after `bash -s --` on macOS and Linux, or before the last quote on Windows:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/amgdy/github-copilot-usage-lens/main/scripts/collect.sh | bash -s -- --enterprise octocorp --months 6
@@ -219,7 +259,7 @@ powershell -ExecutionPolicy Bypass -File scripts\collect.ps1 -Org octo-org,octo-
 | `--output FILE` | `-Output FILE` | Where to save the file. A folder works too. |
 | `--plain` | `-Plain` | Save plain text (`.ndjson`) instead of a compressed file. |
 | `--only LIST`, `--skip LIST` | `-Only LIST`, `-Skip LIST` | Read only these sources, or leave them out. Separate names with commas. |
-| `--list-sources` | `-ListSources` | Show every source and the access it needs. |
+| `--list-sources` | `-ListSources` | Show every source, the access it needs and the network addresses to allow. With `--hostname`, the addresses are for that host. |
 | `--yes` | `-Yes` | Ask nothing and use the options as given. |
 | `--help` | `-Help` | Show every option. |
 
@@ -273,7 +313,7 @@ If a request is refused with HTTP 403, check your role, the scopes in the table 
 | **Efficiency** | Scorecard from best to worst, savings levers and their combined effect, tokens and cache reuse (read and write), cost per active day, role models and a playbook. |
 | **Organization** | Any dimension (organization, cost center, repository, app) as ranking and treemap, showback and chargeback, users without a cost center. |
 | **Patterns** | Daily timeline with unusual days marked, weekday profile, calendar heatmap, adoption curve, unusual days table, lapsed and fading users, month table. |
-| **Recommendations** | Recommendations ordered by impact, with filters, a **what-if simulator** that recomputes cost live, seat actions, the playbook and official links for each step. |
+| **Recommendations** | Recommendations ordered by impact, with filters, a **what-if simulator** that recomputes cost live, seat actions, the playbook, official links and **Ask GitHub Copilot**, a detailed prompt for six analysis tasks. |
 | **Licenses** | Seats from your license list: who uses them, who does not, last activity, seats you can free up and what they cost, and seats with no usage in the report. |
 | **Data** | File quality (rows read, kept, duplicates, bad cells), integrity checks, coverage, the license list, other GitHub exports you can add, a row explorer and a CSV download of the filtered rows. |
 | **Settings** | Theme, colors (GitHub, high contrast, colorblind friendly), Arabic digits, monthly budget, every threshold behind the groups with live previews, seat list and extra seats, model price overrides, a live price check, import and export of settings, and a glossary. |
@@ -297,6 +337,15 @@ Charts and tables are clickable: clicking a bar, slice, cell or row narrows the 
 ### Exports
 
 From **Export** in the top bar: an executive summary in Markdown (copy or download), per-user action list (CSV), recommendations (CSV), and print or save as PDF (light colors, navigation hidden, filters and data source printed at the top). Charts have a PNG download, tables have CSV download. Downloaded files are named `github-copilot-...`.
+
+On **Recommendations**, **Ask GitHub Copilot** builds a detailed prompt for one of six tasks: brief leadership, find patterns the dashboards miss, review seats, review budgets and limits, review model usage, and plan next steps for user groups. Use it for the questions that need several tables at once, such as the likely cause of a spike, a projection with low and high cases, or a fair plan for each user group.
+
+- **Only the data the task needs.** The prompt holds calculated results, not raw usage rows, in a compact text form: one header line per table (`name[rows]{columns}:`) and comma-separated rows. Long tables show only their top rows, so a large report gives about the same size: the sample report gives prompts of about 19,000 to 38,000 characters. The dialog shows the size of each prompt.
+- **Clear rules and a fixed answer.** The prompt explains how to read the data, the rules of the numbers (shared included credits, savings that overlap, code completions not in the report), how to think, and an answer format: In brief, Findings with evidence and confidence, the task sections, Actions with owners, Risks and data limits, and Questions.
+- **Deep reasoning.** The prompt asks for the model's deepest reasoning. Pick a reasoning model and the highest thinking level your GitHub Copilot client offers.
+- **Private by default.** User names are replaced with aliases such as `user-01` in tables and in text, unless you turn names on. The app does not send the data: review the prompt, then copy it or download it as a Markdown file. In Arabic, the instructions are in Arabic and the answer is asked for in Arabic.
+
+The dialog also downloads [instructions for a GitHub Copilot Space](docs/copilot-spaces-instructions.md), so you can add the prompts to a Space and ask follow-up questions.
 
 CSV downloads are UTF-8 with a byte order mark, so Excel opens them with the right characters. A text cell that starts with `=`, `+`, `-` or `@` gets a leading `'`, so a spreadsheet shows it as text instead of running it as a formula.
 
@@ -416,7 +465,7 @@ npm test
 
 The suite covers the tokenizer and ingest (BOM, quoting, scientific notation, date formats, duplicates, bad cells), filters, aggregation, the pool and projection math, the Auto discount, seat plans, the license list, user classification, recommendations, the savings simulator and the exports. It uses made-up fixtures and generated data only. Guard tests check that the product is always called "GitHub Copilot", that every visible text has Arabic, that layouts use start/end instead of left/right, that every number on a page has a calculation doc, that the start page offers your own files first and one clearly labeled sample report, that the sample never reads a file or uses your saved license list, and that the theme keeps every text color readable.
 
-When `gh`, `curl` and `openssl` are installed (on Linux), the collector scripts run against a made-up GitHub (`tests/collectorMock.ts`). The tests check what the scripts send and keep, that the app reads their file, that `collect.sh` works the same when piped into bash (as the command from GitHub does), and, when PowerShell is installed, that `collect.ps1` writes the same data as `collect.sh`, from a file or as a script block.
+When `gh`, `curl` and `openssl` are installed (on Linux or macOS), the collector scripts run against a made-up GitHub (`tests/collectorMock.ts`). On macOS the tests use the bash 3.2 that comes with it, the oldest bash `collect.sh` must work with. The tests check what the scripts send and keep, that the app reads their file, that they name the addresses a network blocks, that `collect.sh` works the same when piped into bash (as the command from GitHub does), and, when PowerShell is installed, that `collect.ps1` writes the same data as `collect.sh`, from a file or as a script block. The two tests where PowerShell downloads files without curl run only on Linux, because .NET on macOS does not trust the test certificate.
 
 ## Publishing the site
 

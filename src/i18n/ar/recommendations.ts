@@ -5,6 +5,286 @@ const plural = (one: string, two: string, few: string, many: string, other: stri
 
 /** Arabic for the Recommendations page, the recommendation engine, the personal tips and the executive summary. */
 const arabic: Dict = {
+  // GitHub Copilot prompt: the dialog
+  'Ask GitHub Copilot': 'اسأل GitHub Copilot',
+  'Prepare a prompt for GitHub Copilot': 'جهّز مطالبة لـ GitHub Copilot',
+  'Choose a task, review the prompt, then copy it into GitHub Copilot. This app does not send your data.':
+    'اختر مهمة، وراجع المطالبة، ثم انسخها إلى GitHub Copilot. لا يرسل هذا التطبيق بياناتك.',
+  'What should GitHub Copilot do?': 'ما المهمة التي تريد من GitHub Copilot تنفيذها؟',
+  'Include real user names': 'تضمين أسماء المستخدمين الحقيقية',
+  'Off by default. When off, names are replaced with labels such as {alias}, in tables and in text.':
+    'متوقف افتراضيًا. عند إيقافه، تُستبدل الأسماء بتسميات مثل {alias} في الجداول وفي النص.',
+  'The prompt holds the data this task needs in a compact form, with clear rules and an answer format. For the best answer, pick a reasoning model and the highest thinking level that your GitHub Copilot client offers.':
+    'تحمل المطالبة البيانات التي تحتاجها هذه المهمة في شكل موجز، مع قواعد واضحة وشكل محدد للإجابة. للحصول على أفضل إجابة، اختر نموذجًا يدعم التفكير المعمّق وأعلى مستوى تفكير يتيحه عميل GitHub Copilot لديك.',
+  'Prompt preview': 'معاينة المطالبة',
+  '{chars} characters, about {tokens} tokens': '{chars} حرفًا، أي نحو {tokens} رمزًا',
+  'Download Space instructions': 'تنزيل إرشادات المساحة',
+  'Download prompt': 'تنزيل المطالبة',
+  'Copy prompt': 'نسخ المطالبة',
+
+  // GitHub Copilot prompt: the tasks
+  'Brief leadership': 'إعداد موجز للقيادة',
+  'Write a decision brief for leaders who do not read dashboards. Explain what the numbers mean for the business, what is likely to happen next, and what leaders need to decide.':
+    'اكتب موجز قرارات لقادة لا يقرؤون لوحات المعلومات. اشرح ما تعنيه الأرقام للعمل، وما يُرجَّح أن يحدث بعد ذلك، وما يجب على القادة أن يقرروه.',
+  'Tell the story of the period in three parts: what happened, why it most likely happened, and what happens next if nothing changes.':
+    'احكِ قصة الفترة في ثلاثة أجزاء: ماذا حدث، ولماذا حدث على الأرجح، وماذا سيحدث بعد ذلك إن لم يتغير شيء.',
+  'Link cost to value. Is usage growing because more people use GitHub Copilot, or because a few people use costly models more? Use users, user_spread, months and models together.':
+    'اربط التكلفة بالقيمة. هل يزيد الاستخدام لأن عدد من يستخدمون GitHub Copilot يزيد، أم لأن قلة من الناس يستخدمون النماذج المكلفة أكثر؟ استخدم users وuser_spread وmonths وmodels معًا.',
+  'Project the next month from months (proj_*) and weeks. Give a low, a likely and a high case, and say what drives each one.':
+    'توقّع الشهر القادم من months (الأعمدة proj_*) وweeks. قدّم حالة منخفضة وحالة مرجّحة وحالة مرتفعة، واذكر ما يحرّك كل واحدة منها.',
+  'Choose at most three decisions. For each one, give the options, the cost of acting and of not acting, and who should own it.':
+    'اختر ثلاثة قرارات على الأكثر. لكل قرار، اذكر الخيارات، وتكلفة التنفيذ وتكلفة عدم التنفيذ، ومن يجب أن يتولاه.',
+  'Name one thing that goes well and should be kept.': 'اذكر أمرًا واحدًا يسير جيدًا ويجب الحفاظ عليه.',
+  Outlook: 'التوقعات',
+  'A table for next month with a low, likely and high case: usage, billed usage and pool use, with the main driver of each case.':
+    'جدول للشهر القادم فيه حالة منخفضة ومرجّحة ومرتفعة: الاستخدام، والاستخدام المدفوع، واستخدام الرصيد المشترك، مع السبب الرئيسي لكل حالة.',
+  'Decisions needed': 'القرارات المطلوبة',
+  'Up to three numbered decisions. For each: the options, your advice, the owner and a date to decide by.':
+    'حتى ثلاثة قرارات مرقّمة. لكل قرار: الخيارات، ونصيحتك، والمسؤول عنه، وموعد لاتخاذه.',
+  'Find patterns the dashboards miss': 'اكتشاف أنماط لا تظهرها لوحات المعلومات',
+  'Find patterns, links and outliers that a dashboard cannot show because they need several tables at once. Explain the likely causes and how to confirm them.':
+    'اكتشف الأنماط والروابط والحالات الشاذة التي لا تستطيع لوحة المعلومات إظهارها لأنها تحتاج إلى عدة جداول معًا. اشرح الأسباب المرجّحة وكيف يمكن التأكد منها.',
+  'Look across time: weekday cycles (weekdays), spikes (spikes) and changes between months. Link each spike to the users and models behind it, and check whether the same users drive several spikes.':
+    'انظر عبر الزمن: دورات أيام الأسبوع (weekdays)، والقفزات (spikes)، والتغيّرات بين الأشهر. اربط كل قفزة بالمستخدمين والنماذج التي تقف خلفها، وتحقق مما إذا كان المستخدمون أنفسهم وراء عدة قفزات.',
+  'Look across groups. Compare the rows of group_mix and find groups that behave differently, for example high usage with low cache use, or many top models with few active days.':
+    'انظر عبر المجموعات. قارن صفوف group_mix واعثر على المجموعات التي تتصرف بشكل مختلف، مثل استخدام مرتفع مع استخدام منخفض للذاكرة المؤقتة، أو كثرة النماذج القوية مع قلة أيام النشاط.',
+  'Look at dependency: how much of the usage depends on a few users (user_spread, users), and what would change if they stopped.':
+    'انظر إلى الاعتماد: كم من الاستخدام يعتمد على قلة من المستخدمين (user_spread وusers)، وماذا سيتغير لو توقفوا.',
+  'Find data that does not fit together, such as high usage with few active days, or users active in GitHub but missing in the report. Explain each case.':
+    'اعثر على بيانات لا تتوافق معًا، مثل استخدام مرتفع مع قلة أيام النشاط، أو مستخدمين نشطين في GitHub لكنهم غائبون عن التقرير. اشرح كل حالة.',
+  'Find early warning signs: a rising trend_pct, more users above their own share, or a pool that runs out earlier each month.':
+    'اعثر على علامات الإنذار المبكر: ارتفاع trend_pct، أو زيادة المستخدمين الذين تجاوزوا حصتهم، أو رصيد مشترك ينفد أبكر كل شهر.',
+  'For every pattern, give at least two possible explanations and say which data would confirm or rule out each one.':
+    'لكل نمط، قدّم تفسيرين محتملين على الأقل، واذكر البيانات التي تؤكد كل تفسير أو تستبعده.',
+  'A numbered list. For each pattern: what you see, the evidence (table and row), the most likely explanation and one other, the effect in USD per month when known, and how to confirm it.':
+    'قائمة مرقّمة. لكل نمط: ما تراه، والدليل (الجدول والصف)، والتفسير الأرجح وتفسير آخر، والأثر بالدولار الأمريكي شهريًا عندما يكون معروفًا، وكيف تتأكد منه.',
+  Outliers: 'الحالات الشاذة',
+  'A table of the users, days or models that stand out, with what makes each one stand out.':
+    'جدول بالمستخدمين أو الأيام أو النماذج اللافتة، مع ما يجعل كلًا منها لافتًا.',
+  'Watch list': 'قائمة المتابعة',
+  'Three to five signals to check every month, each with the level that should start an action.':
+    'من ثلاث إلى خمس إشارات تُراجع كل شهر، ولكل منها المستوى الذي يستدعي اتخاذ إجراء.',
+  'Review seats': 'مراجعة التراخيص',
+  'Decide which seats to keep, check, change or remove, with fair and careful evidence. Put the seats in groups so an admin can act on each group at once.':
+    'قرّر أي التراخيص تُبقى أو تُراجع أو تُغيَّر أو تُزال، بأدلة عادلة ودقيقة. ضع التراخيص في مجموعات حتى يتمكن المسؤول من التعامل مع كل مجموعة دفعة واحدة.',
+  'Combine every signal for each seat: usage in the report (users, seat_candidates), license activity (license_findings), GitHub activity (github_activity, active_without_report_usage) and seat changes (audit_months).':
+    'اجمع كل الإشارات لكل ترخيص: الاستخدام في التقرير (users وseat_candidates)، ونشاط قائمة التراخيص (license_findings)، والنشاط في GitHub (github_activity وactive_without_report_usage)، وتغييرات التراخيص (audit_months).',
+  'Code completions are not in the report. A seat with no usage in the report but recent activity in the license list or in GitHub is in use. Never advise removing it.':
+    'إكمال التعليمات البرمجية ليس في التقرير. الترخيص الذي ليس له استخدام في التقرير لكن له نشاط حديث في قائمة التراخيص أو في GitHub مستخدَم. لا تنصح أبدًا بإزالته.',
+  'Put the seats in groups: remove now (strong evidence from two sources), ask the user or manager first, change the plan, and keep. Say what evidence puts a seat in its group.':
+    'ضع التراخيص في مجموعات: إزالة الآن (دليل قوي من مصدرين)، وسؤال المستخدم أو المدير أولًا، وتغيير الخطة، والإبقاء. اذكر الدليل الذي يضع كل ترخيص في مجموعته.',
+  'Look for problems in how seats are given: organizations that give every member a seat, seats added and never used, pending invitations, and users with seats in several organizations.':
+    'ابحث عن مشكلات في طريقة منح التراخيص: منظمات تمنح كل عضو ترخيصًا، وتراخيص أُضيفت ولم تُستخدم قط، ودعوات معلّقة، ومستخدمون لديهم تراخيص في عدة منظمات.',
+  'Give the monthly saving of each group from the data. Do not add savings that overlap.':
+    'اذكر التوفير الشهري لكل مجموعة من البيانات. لا تجمع الوفورات المتداخلة.',
+  'Suggest a fair and respectful process: tell users first, give them time, and make it easy to get a seat back.':
+    'اقترح خطوات عادلة ومحترمة: أبلغ المستخدمين أولًا، وامنحهم وقتًا، واجعل استعادة الترخيص سهلة.',
+  'Seat groups': 'مجموعات التراخيص',
+  'A table: group, number of seats, users, evidence and monthly USD.':
+    'جدول: المجموعة، وعدد التراخيص، والمستخدمون، والدليل، والمبلغ الشهري بالدولار الأمريكي.',
+  'Steps with timing, for example week 1, week 2 and week 4.': 'خطوات مع توقيتها، مثل الأسبوع 1 والأسبوع 2 والأسبوع 4.',
+  'Message to users': 'رسالة إلى المستخدمين',
+  'A short and friendly draft message to users whose seat may be removed.': 'مسودة رسالة قصيرة وودودة للمستخدمين الذين قد تُزال تراخيصهم.',
+  'Review budgets and limits': 'مراجعة الميزانيات والحدود',
+  'Explain how the spending limits and the included credits work together for this account, find where work could be blocked or costs could run over, and suggest better settings.':
+    'اشرح كيف تعمل حدود الإنفاق والأرصدة المشمولة معًا في هذا الحساب، واعثر على المواضع التي قد يتوقف فيها العمل أو تتجاوز فيها التكاليف الحد، واقترح إعدادات أفضل.',
+  'Explain the structure in plain words. The shared pool of included credits is used first, and only the rest is billed. Spending limits apply to billed usage. The enterprise or organization limit is the frame. Cost center and organization limits sit inside it. User limits (individual, cost center default or universal) cap single users.':
+    'اشرح البنية بكلمات بسيطة. يُستخدم الرصيد المشترك للأرصدة المشمولة أولًا، ولا يُدفع إلا الباقي. تنطبق حدود الإنفاق على الاستخدام المدفوع. حد المؤسسة أو المنظمة هو الإطار. وحدود مراكز التكلفة والمنظمات تقع داخله. وحدود المستخدمين (فردي، أو افتراضي لمركز التكلفة، أو عام) تحدّ من استخدام كل مستخدم.',
+  'Use limit_frame, limit_rows, limit_users, github_budgets and users_at_limit to find limits that are almost full, the limit that is reached first, rows with no limit, and users who will reach their limit before the month ends.':
+    'استخدم limit_frame وlimit_rows وlimit_users وgithub_budgets وusers_at_limit لتعثر على الحدود التي امتلأت تقريبًا، والحد الذي يُبلغ أولًا، والصفوف التي بلا حد، والمستخدمين الذين سيبلغون حدودهم قبل نهاية الشهر.',
+  'Compare the projection (months proj_*, monthly_budget) with each limit and say on which day a limit would be reached at the current pace.':
+    'قارن التوقع (الأعمدة proj_* في months، وmonthly_budget) بكل حد، واذكر اليوم الذي سيُبلغ فيه كل حد بالوتيرة الحالية.',
+  'Check whether each limit fits the usage. A limit far above use gives no control, and a limit far below use blocks work. Use user_spread and users to suggest values, with a reason for each.':
+    'تحقق مما إذا كان كل حد يناسب الاستخدام. الحد الأعلى بكثير من الاستخدام لا يضبط شيئًا، والحد الأدنى منه بكثير يوقف العمل. استخدم user_spread وusers لاقتراح قيم، مع سبب لكل منها.',
+  'Check github_bills and billing_check for gaps between the report and GitHub billing.':
+    'راجع github_bills وbilling_check بحثًا عن فروق بين التقرير وفوترة GitHub.',
+  'Do not claim that an enterprise budget blocks every user. GitHub settings that are not in this data can change that.':
+    'لا تقل إن ميزانية المؤسسة توقف كل المستخدمين. قد تغيّر ذلك إعدادات في GitHub غير موجودة في هذه البيانات.',
+  'How your limits work': 'كيف تعمل حدودك',
+  'A short plain explanation of this account, with a small text tree of the frame, the rows inside it and the user limits.':
+    'شرح قصير وبسيط لهذا الحساب، مع شجرة نصية صغيرة للإطار والصفوف التي داخله وحدود المستخدمين.',
+  'Limit risk': 'مخاطر الحدود',
+  'A table: limit, used, room left, the expected day it is reached, and what happens then.':
+    'جدول: الحد، والمستخدم منه، والمتبقي، واليوم المتوقع لبلوغه، وما يحدث عندئذ.',
+  'Suggested settings': 'الإعدادات المقترحة',
+  'A table: limit, current value, suggested value, stop or alert only, and the reason.':
+    'جدول: الحد، والقيمة الحالية، والقيمة المقترحة، وإيقاف أم تنبيه فقط، والسبب.',
+  'Which alerts to set, at what level, and who should get them.': 'أي التنبيهات تُضبط، وعند أي مستوى، ومن يجب أن يتلقاها.',
+  'Review model usage': 'مراجعة استخدام النماذج',
+  'Find where the model mix costs more than it needs to, without hurting work that really needs top models, and suggest a model policy.':
+    'اعثر على المواضع التي يكلّف فيها مزيج النماذج أكثر من اللازم، دون الإضرار بالعمل الذي يحتاج فعلًا إلى النماذج القوية، واقترح سياسة للنماذج.',
+  'Compare models by usd_per_mtok, cache_hit_pct, users and class. Find costly models used for work that a lower-cost model or Auto could do, and models with low cache use.':
+    'قارن النماذج حسب usd_per_mtok وcache_hit_pct وusers وclass. اعثر على النماذج المكلفة المستخدمة في عمل يمكن أن ينجزه نموذج أقل تكلفة أو Auto، والنماذج قليلة الاستخدام للذاكرة المؤقتة.',
+  'Link models to users: who drives each costly model, and is it a few users or many (users, group_mix)?':
+    'اربط النماذج بالمستخدمين: من يقف وراء كل نموذج مكلف، وهل هم قلة أم كثيرون (users وgroup_mix)؟',
+  'Check Auto: the discount received, the discount missed and auto_pct of each user. Say where Auto would save the most and where it may not fit.':
+    'راجع Auto: الخصم الذي حصلت عليه، والخصم الذي فاتك، وauto_pct لكل مستخدم. اذكر أين يوفّر Auto أكثر وأين قد لا يناسب.',
+  'Look at long_context_pct and the extra cost of long context.': 'انظر إلى long_context_pct والتكلفة الإضافية للسياق الطويل.',
+  'Use savings_steps and savings_plan for the size of the savings. Single steps overlap, so use the combined plan for a total.':
+    'استخدم savings_steps وsavings_plan لمعرفة حجم الوفورات. الخطوات المفردة متداخلة، لذا استخدم الخطة المجمعة للإجمالي.',
+  'Never assume that a lower-cost model fits every task. Say which kinds of work should keep top models.':
+    'لا تفترض أبدًا أن النموذج الأقل تكلفة يناسب كل مهمة. اذكر أنواع العمل التي يجب أن تبقى على النماذج القوية.',
+  'A table: model, class, share of usage, cost per 1M tokens, main users, and your advice (keep, move to Auto, move to a lower class, or check).':
+    'جدول: النموذج، والفئة، والحصة من الاستخدام، والتكلفة لكل مليون رمز، والمستخدمون الرئيسيون، ونصيحتك (إبقاء، أو نقل إلى Auto، أو نقل إلى فئة أدنى، أو مراجعة).',
+  Opportunities: 'الفرص',
+  'A numbered list with USD per month and confidence.': 'قائمة مرقّمة مع المبلغ بالدولار الأمريكي شهريًا ودرجة الثقة.',
+  'Model policy': 'سياسة النماذج',
+  'A short draft policy for admins and team leads.': 'مسودة سياسة قصيرة للمسؤولين وقادة الفرق.',
+  Rollout: 'خطة التطبيق',
+  'Steps to roll out the changes and to measure the effect.': 'خطوات لتطبيق التغييرات وقياس أثرها.',
+  'Plan next steps for user groups': 'تخطيط الخطوات التالية لمجموعات المستخدمين',
+  'Turn the user groups into a practical plan: help light users get value, guide heavy users to use credits wisely, and spread the good habits of the best users.':
+    'حوّل مجموعات المستخدمين إلى خطة عملية: ساعد قليلي الاستخدام على الاستفادة، ووجّه كثيري الاستخدام إلى استخدام الأرصدة بحكمة، وانشر العادات الجيدة لأفضل المستخدمين.',
+  'Describe each group from group_meaning and group_mix in plain words: who they are, how they work and what they need.':
+    'صِف كل مجموعة من group_meaning وgroup_mix بكلمات بسيطة: من هم، وكيف يعملون، وماذا يحتاجون.',
+  'Find the groups with the most room to improve: low use with a seat, heavy use of top models, low cache or Auto use, or fading activity.':
+    'اعثر على المجموعات التي لديها أكبر مجال للتحسن: استخدام قليل مع وجود ترخيص، أو استخدام كثيف للنماذج القوية، أو قلة استخدام الذاكرة المؤقتة أو Auto، أو نشاط يتراجع.',
+  'Find good examples: users or groups with high value and efficient habits (high efficiency, high cache_hit_pct, steady activity). Say what others can learn from them.':
+    'اعثر على أمثلة جيدة: مستخدمون أو مجموعات ذوو قيمة عالية وعادات كفؤة (efficiency مرتفع، وcache_hit_pct مرتفع، ونشاط ثابت). اذكر ما يمكن أن يتعلمه الآخرون منهم.',
+  'Suggest one action for each group, with the expected effect on usage and cost, and how to measure it in the next report.':
+    'اقترح إجراءً واحدًا لكل مجموعة، مع أثره المتوقع على الاستخدام والتكلفة، وكيف يُقاس في التقرير القادم.',
+  'Suggest actions for groups. Name a single user only when the evidence is about that user alone.':
+    'اقترح إجراءات للمجموعات. لا تذكر مستخدمًا بعينه إلا عندما يخص الدليل ذلك المستخدم وحده.',
+  'Group plan': 'خطة المجموعات',
+  'A table: group, users, what they need, action, owner, expected effect and how to measure it.':
+    'جدول: المجموعة، والمستخدمون، وما يحتاجونه، والإجراء، والمسؤول، والأثر المتوقع، وكيف يُقاس.',
+  'Good examples': 'أمثلة جيدة',
+  'What the best users do differently and how to share it.': 'ما يفعله أفضل المستخدمين بشكل مختلف، وكيف يُنشر ذلك.',
+  'Message draft': 'مسودة رسالة',
+  'A short message to the group where it matters most.': 'رسالة قصيرة إلى المجموعة الأهم.',
+
+  // GitHub Copilot prompt: the shared parts
+  'In brief': 'باختصار',
+  'Three to five bullets with the most important points and their numbers. A reader who stops here should know what to do.':
+    'من ثلاث إلى خمس نقاط بأهم ما في التحليل وأرقامه. يجب أن يعرف القارئ ما يفعله حتى لو توقف هنا.',
+  Findings: 'النتائج',
+  'A table: #, finding, evidence (table and row, for example models: model name), effect (USD per month or users) and confidence (high, medium or low). The most important first.':
+    'جدول: #، والنتيجة، والدليل (الجدول والصف، مثل models: اسم النموذج)، والأثر (بالدولار الأمريكي شهريًا أو بعدد المستخدمين)، والثقة (عالية أو متوسطة أو منخفضة). الأهم أولًا.',
+  'A table: #, action, owner, effort (low, medium or high), expected effect and how to measure it. The most value first.':
+    'جدول: #، والإجراء، والمسؤول، والجهد (منخفض أو متوسط أو مرتفع)، والأثر المتوقع، وكيف يُقاس. الأعلى قيمة أولًا.',
+  'Risks and data limits': 'المخاطر وحدود البيانات',
+  'Short bullets: what could make your advice wrong, and what data is missing.': 'نقاط قصيرة: ما الذي قد يجعل نصيحتك خاطئة، وما البيانات الناقصة.',
+  Questions: 'أسئلة',
+  'Up to three questions whose answers would change your advice. Write "None" when there are none.':
+    'حتى ثلاثة أسئلة قد تغيّر إجاباتها نصيحتك. اكتب "لا يوجد" إن لم تكن هناك أسئلة.',
+  'GitHub Copilot usage analysis: {task}': 'تحليل استخدام GitHub Copilot: {task}',
+  'You are a senior analyst for GitHub Copilot usage and costs. An admin gives you data that GitHub Copilot Usage Lens calculated from the GitHub Copilot AI credits usage report. Find what dashboards cannot show: links between tables, likely causes, risks ahead and the best next steps.':
+    'أنت محلل أول لاستخدام GitHub Copilot وتكاليفه. يقدّم لك مسؤول بيانات حسبها GitHub Copilot Usage Lens من تقرير استخدام أرصدة الذكاء الاصطناعي في GitHub Copilot. اكتشف ما لا تستطيع لوحات المعلومات إظهاره: الروابط بين الجداول، والأسباب المرجّحة، والمخاطر القادمة، وأفضل الخطوات التالية.',
+  'Your task': 'المهمة المطلوبة',
+  'The data comes first. The full instructions and the answer format follow after it.': 'تأتي البيانات أولًا، ثم تليها الإرشادات الكاملة وشكل الإجابة.',
+  'How to read the data': 'كيف تقرأ البيانات',
+  'How to think': 'كيف تفكر',
+  Rules: 'القواعد',
+  'What to look for': 'ما الذي تبحث عنه',
+  'Answer format': 'شكل الإجابة',
+  'Write in Markdown. Use these sections in this order, with these titles. Keep tables to 10 rows or fewer.':
+    'اكتب بتنسيق Markdown. استخدم هذه الأقسام بهذا الترتيب وبهذه العناوين. اجعل الجداول 10 صفوف أو أقل.',
+  'Check before you answer': 'تحقق قبل أن تجيب',
+  'Now write the answer. Start with the section "{title}".': 'اكتب الإجابة الآن. ابدأ بالقسم "{title}".',
+  'Each section starts with its name. Simple sections have one "key: value" line per item.':
+    'يبدأ كل قسم باسمه. في الأقسام البسيطة سطر واحد "key: value" لكل عنصر.',
+  'A table starts with name[rows]{columns}: and each line after it is one row of values split by commas. [25/140] means 25 of 140 rows are shown.':
+    'يبدأ الجدول بـ name[rows]{columns}: وكل سطر بعده صف واحد من القيم تفصل بينها فواصل. و[25/140] تعني أن 25 صفًا من أصل 140 معروضة.',
+  'A value with a comma or a quote is in double quotes. A quote inside it is written twice.':
+    'القيمة التي فيها فاصلة أو علامة اقتباس توضع بين علامتي اقتباس مزدوجتين، وتُكتب علامة الاقتباس التي داخلها مرتين.',
+  'A line that starts with # explains the table below it.': 'السطر الذي يبدأ بـ # يشرح الجدول الذي تحته.',
+  'y means yes, n means no and - means unknown or not available. A | splits a list inside one value.':
+    'y تعني نعم، وn تعني لا، و- تعني غير معروف أو غير متاح. والعلامة | تفصل بين عناصر قائمة داخل قيمة واحدة.',
+  'Names that end in _usd are US dollars, _pct is a percentage from 0 to 100, _mtok is millions of tokens. Dates are YYYY-MM-DD.':
+    'الأسماء التي تنتهي بـ _usd بالدولار الأمريكي، و_pct نسبة مئوية من 0 إلى 100، و_mtok بملايين الرموز. والتواريخ بصيغة YYYY-MM-DD.',
+  'usage is the reported usage, after any Auto discount. covered is the part paid by included credits. billed is the rest, which is charged.':
+    'usage هو الاستخدام المُبلغ عنه بعد أي خصم Auto. وcovered هو الجزء الذي غطته الأرصدة المشمولة. وbilled هو الباقي الذي يُدفع.',
+  "own_share is the included credits of a user's own seat. It is only a yardstick, because the credits are shared.":
+    'own_share هو الأرصدة المشمولة في ترخيص المستخدم نفسه. وهو مقياس للمقارنة فقط، لأن الأرصدة مشتركة.',
+  'Ids such as persona or tier values are explained in group_meaning when it is present.':
+    'المعرّفات مثل قيم persona أو tier مشروحة في group_meaning عند وجوده.',
+  'Use your deepest reasoning. If you can choose a reasoning mode or level, use the highest one.':
+    'استخدم أعمق تفكير لديك. إن كان بإمكانك اختيار وضع التفكير أو مستواه، فاختر أعلاه.',
+  'Read every table before you write. Then link the tables: time with users and models, groups with limits, organizations with seats.':
+    'اقرأ كل الجداول قبل أن تكتب. ثم اربط الجداول: الزمن بالمستخدمين والنماذج، والمجموعات بالحدود، والمنظمات بالتراخيص.',
+  'For each finding, test at least two explanations and keep the one the data supports best. Say how sure you are.':
+    'لكل نتيجة، اختبر تفسيرين على الأقل واحتفظ بالتفسير الذي تدعمه البيانات أكثر. واذكر مدى ثقتك.',
+  'Look for what the recommendations of the app miss. Say where you disagree with them and why.':
+    'ابحث عمّا فات توصيات التطبيق. واذكر أين تختلف معها ولماذا.',
+  'Check every number you quote against the data. Do the math step by step and round only at the end.':
+    'طابق كل رقم تذكره مع البيانات. احسب خطوة بخطوة ولا تقرّب إلا في النهاية.',
+  'Do not show your working notes. Show only the results, with short reasons.': 'لا تعرض ملاحظات عملك. اعرض النتائج فقط مع أسباب قصيرة.',
+  'The data above is your only source. Do not invent numbers, causes, prices or GitHub settings.':
+    'البيانات أعلاه هي مصدرك الوحيد. لا تخترع أرقامًا أو أسبابًا أو أسعارًا أو إعدادات في GitHub.',
+  'The totals of the app are correct, so do not recalculate them. You may derive new figures such as ratios, shares and differences. Show the formula in short, for example "12.4 / 80 = 15.5%".':
+    'إجماليات التطبيق صحيحة، فلا تُعد حسابها. يمكنك استخراج أرقام جديدة مثل النسب والحصص والفروق. اعرض المعادلة باختصار، مثل "12.4 / 80 = 15.5%".',
+  '1 AI credit is 0.01 USD. Usage is the amount covered by included credits plus the amount billed.':
+    'رصيد الذكاء الاصطناعي الواحد يساوي 0.01 دولار أمريكي. والاستخدام هو المبلغ الذي غطته الأرصدة المشمولة مضافًا إليه المبلغ المدفوع.',
+  'Included credits form one shared pool for the account. They are not personal allowances.':
+    'تشكّل الأرصدة المشمولة رصيدًا مشتركًا واحدًا للحساب، وليست حصصًا شخصية.',
+  'Savings of separate recommendations or steps overlap. Never add them up. Use savings_plan for a combined figure.':
+    'وفورات التوصيات أو الخطوات المنفصلة متداخلة. لا تجمعها أبدًا. استخدم savings_plan للحصول على رقم مجمّع.',
+  'Code completions and next edit suggestions are not in the report. No usage is not proof that a seat is unused.':
+    'إكمال التعليمات البرمجية واقتراحات التعديل التالي ليست في التقرير. وغياب الاستخدام ليس دليلًا على أن الترخيص غير مستخدم.',
+  'A - means unknown, not zero. Say when data is missing, filtered or made up for a sample.':
+    'العلامة - تعني غير معروف، لا صفرًا. اذكر متى تكون البيانات ناقصة أو مصفّاة أو مختلقة لتقرير تجريبي.',
+  'Mark estimates as estimates. Write money in USD with two decimals at most.':
+    'ميّز التقديرات بأنها تقديرات. واكتب المبالغ بالدولار الأمريكي بخانتين عشريتين على الأكثر.',
+  'Write for managers in plain words and short sentences. Explain a technical term the first time you use it.':
+    'اكتب للمديرين بكلمات بسيطة وجمل قصيرة. واشرح أي مصطلح تقني في أول مرة تستخدمه.',
+  'User names were replaced with aliases such as {alias}. The lowest number has the most usage. Use the aliases as they are. They are not GitHub logins.':
+    'استُبدلت أسماء المستخدمين بتسميات مثل {alias}. وأصغر رقم له أكبر استخدام. استخدم التسميات كما هي، فهي ليست أسماء دخول إلى GitHub.',
+  'The admin chose to include real user names. Name a person only when the task needs it.':
+    'اختار المسؤول تضمين أسماء المستخدمين الحقيقية. لا تذكر شخصًا بالاسم إلا عندما تحتاج المهمة إلى ذلك.',
+  'Answer in Arabic. Keep the names of tables, columns, ids, models and users as they are in the data.':
+    'أجب باللغة العربية. واترك أسماء الجداول والأعمدة والمعرّفات والنماذج والمستخدمين كما هي في البيانات.',
+  'Answer in English. Keep the names of tables, columns, ids, models and users as they are in the data.':
+    'أجب باللغة الإنجليزية. واترك أسماء الجداول والأعمدة والمعرّفات والنماذج والمستخدمين كما هي في البيانات.',
+  'Every number in your answer is in the data or comes from a formula you show.': 'كل رقم في إجابتك موجود في البيانات أو ناتج عن معادلة تعرضها.',
+  'No savings are added together.': 'لم تُجمع أي وفورات معًا.',
+  'Every finding has evidence and a confidence level.': 'لكل نتيجة دليل ودرجة ثقة.',
+  'Every action has an owner and a way to measure it.': 'لكل إجراء مسؤول وطريقة لقياسه.',
+  'No seat is called unused on report usage alone.': 'لم يوصف أي ترخيص بأنه غير مستخدم بناءً على استخدام التقرير وحده.',
+  'The answer uses the sections in the order given.': 'تستخدم الإجابة الأقسام بالترتيب المحدد.',
+
+  // GitHub Copilot prompt: the notes in the data
+  'pool_* is the shared pool of included credits; proj_* is the projection for a month that is not over':
+    'pool_* هو الرصيد المشترك للأرصدة المشمولة؛ وproj_* هو التوقع لشهر لم ينتهِ بعد',
+  'weeks start on Monday; the first and last week can be partial': 'تبدأ الأسابيع يوم الاثنين؛ وقد يكون الأسبوع الأول والأخير غير مكتملين',
+  'days far above the usual level; top_* lists who and what drove the day as name:usd':
+    'أيام أعلى بكثير من المستوى المعتاد؛ وtop_* يذكر من وما الذي رفع اليوم بصيغة name:usd',
+  'by usage; price_* is the price card in USD per 1M tokens; usd_per_mtok is usage divided by all tokens':
+    'حسب الاستخدام؛ وprice_* هو سعر بطاقة الأسعار بالدولار الأمريكي لكل مليون رمز؛ وusd_per_mtok هو الاستخدام مقسومًا على كل الرموز',
+  'Powerful = top models, Versatile = everyday models, Lightweight = fast low-cost models':
+    'Powerful = النماذج القوية، وVersatile = نماذج الاستخدام اليومي، وLightweight = النماذج السريعة منخفضة التكلفة',
+  'users can be in several traits; savable_usd overlaps between groups': 'قد يكون للمستخدم عدة سمات؛ وsavable_usd متداخل بين المجموعات',
+  'shares are weighted by usage; trend_pct compares the last 7 days with the 7 days before':
+    'الحصص موزونة بالاستخدام؛ وtrend_pct يقارن آخر 7 أيام بالأيام السبعة التي قبلها',
+  'the top {limit} by usage, plus up to {more} more of each persona': 'أعلى {limit} حسب الاستخدام، مع ما يصل إلى {more} آخرين من كل persona',
+  'the top {limit} by usage': 'أعلى {limit} حسب الاستخدام',
+  'idle = little use; downgrade = Enterprise seat that never needed more than Business; unused = seat not in the report; keep = not in the report but active by the license data (not a saving)':
+    'idle = استخدام قليل؛ وdowngrade = ترخيص Enterprise لم يحتج قط إلى أكثر من Business؛ وunused = ترخيص ليس في التقرير؛ وkeep = ليس في التقرير لكنه نشط وفق بيانات التراخيص (ليس توفيرًا)',
+  'reclaim = no activity for a long time; fading = activity getting old; quiet = seat with activity but no usage in the report; no_seat = in the report but not in the license list':
+    'reclaim = لا نشاط منذ مدة طويلة؛ وfading = نشاط يتقادم؛ وquiet = ترخيص له نشاط لكن بلا استخدام في التقرير؛ وno_seat = في التقرير لكنه ليس في قائمة التراخيص',
+  'active in GitHub metrics (for example code completions) but with no usage in the report':
+    'نشط في مقاييس GitHub (مثل إكمال التعليمات البرمجية) لكن بلا استخدام في التقرير',
+  'from GitHub billing; open = the month is not closed yet': 'من فوترة GitHub؛ وopen = الشهر لم يُغلق بعد',
+  'the report compared with what GitHub billing shows': 'التقرير مقارنةً بما تُظهره فوترة GitHub',
+  'the fullest first; {count} budgets for other products are left out': 'الأكثر امتلاءً أولًا؛ واستُبعدت {count} ميزانيات لمنتجات أخرى',
+  'the most seats first': 'الأكثر تراخيص أولًا',
+  'each row is the spending limit that a group of users checks, rows with own limits and the fullest first; limits lists every own limit as "amount used amount stops|alert-only"; capacity_usd is the smallest limit that stops use; room_left_usd is the smaller of its own room and the frame room':
+    'كل صف هو حد الإنفاق الذي تخضع له مجموعة من المستخدمين، والصفوف التي لها حدود خاصة والأكثر امتلاءً أولًا؛ وlimits يذكر كل حد خاص بالصف بصيغة "amount used amount stops|alert-only"؛ وcapacity_usd هو أصغر حد يوقف الاستخدام؛ وroom_left_usd هو الأصغر بين المتبقي في الصف والمتبقي في الإطار',
+  'the fullest first; kind: own = individual limit, cost-center = cost center default, everyone = universal limit, none = no user limit':
+    'الأكثر امتلاءً أولًا؛ وkind: own = حد فردي، وcost-center = الحد الافتراضي لمركز التكلفة، وeveryone = الحد العام، وnone = لا حد للمستخدم',
+  'saving_usd is for the whole period and applied one after the other, so the steps do not overlap; alone_usd is each step on its own and does overlap':
+    'saving_usd للفترة كلها ويُطبَّق خطوة بعد أخرى، فلا تتداخل الخطوات؛ وalone_usd لكل خطوة وحدها، وهو متداخل',
+  'from the app; for the task first, then by severity and value; monthly_usd values overlap and must never be added':
+    'من التطبيق؛ ما يخص المهمة أولًا، ثم حسب الخطورة والقيمة؛ وقيم monthly_usd متداخلة ولا يجوز جمعها أبدًا',
+  'parts of a list are split by " / "': 'تُفصل عناصر القائمة بالعلامة " / "',
+  'More was covered than the seats in the file can fund, so the pool size is unknown. Do not state pool or seat figures as facts.':
+    'غُطّي أكثر مما تستطيع التراخيص في الملف تمويله، لذا فحجم الرصيد المشترك غير معروف. لا تذكر أرقام الرصيد المشترك أو التراخيص على أنها حقائق.',
+  'The pool size counts only seats with usage in the report, so it is a lower bound.':
+    'يحسب حجم الرصيد المشترك التراخيص التي لها استخدام في التقرير فقط، لذا فهو حد أدنى.',
+  'No license list is loaded, so seats without usage are not known.': 'لم تُحمَّل قائمة التراخيص، لذا فالتراخيص بلا استخدام غير معروفة.',
+  'No GitHub data file is loaded: no budgets, seats, bills or activity from GitHub.':
+    'لم يُحمَّل ملف بيانات GitHub: لا ميزانيات ولا تراخيص ولا فواتير ولا نشاط من GitHub.',
+  'Code completions and next edit suggestions are not in the usage report.': 'إكمال التعليمات البرمجية واقتراحات التعديل التالي ليست في تقرير الاستخدام.',
+
   // Recommendation card
   'Cash saved per month. This filtered view already has billed overage, so at least this much is cash. Included credits cannot be split for a filtered view, so the real saving can be higher.':
     'المبلغ النقدي الموفَّر شهريًا. في هذا العرض المصفّى مبلغ مدفوع إضافيًا بالفعل، لذا فهذا المقدار على الأقل نقد. لا يمكن تقسيم الأرصدة المشمولة في عرض مصفّى، لذلك قد يكون التوفير الفعلي أعلى.',

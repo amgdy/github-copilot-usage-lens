@@ -1,5 +1,5 @@
 /** Builds the command that runs a collector script, from the choices an admin makes in the app. */
-import { t } from '../../i18n/core';
+import { msg, t } from '../../i18n/core';
 import { BUILD_INFO } from '../build/buildInfo';
 import { APP_REPOSITORY } from '../links';
 
@@ -156,4 +156,52 @@ export function collectorCommand(choices: CollectorChoices, source: CollectorScr
 export function collectorCopyCommand(choices: CollectorChoices): string {
   const start = choices.system === 'powershell' ? 'powershell -ExecutionPolicy Bypass -File scripts\\collect.ps1' : 'bash scripts/collect.sh';
   return [start, ...collectorArguments(choices)].join(' ');
+}
+
+/** A network address the command or the script uses, for networks that allow only some addresses. */
+export interface CollectorAddress {
+  /** A host name. A * stands for any part of the name. */
+  address: string;
+  /** What it is used for, in English. Show it with t(). */
+  purpose: string;
+  /** Needed only to get the script or to sign in, not by the script itself. */
+  beforeRun: boolean;
+}
+
+/** The host the script reads, cleaned the same way the scripts clean --hostname. */
+function collectorHost(choices: CollectorChoices): string {
+  const host = choices.hostname.trim().toLowerCase();
+  if (host === '' || !HOST_PATTERN.test(host)) return DEFAULT_HOST;
+  return host.startsWith('api.') ? host.slice('api.'.length) : host;
+}
+
+/**
+ * The addresses to allow before running the command, from the GitHub Copilot allowlist reference in the GitHub Docs.
+ * The scripts print the same addresses with --list-sources and in their plan. The GitHub Docs do not name the storage
+ * of the AI usage report files; it is the one GitHub uses at the time of writing.
+ */
+export function collectorAddresses(choices: CollectorChoices): CollectorAddress[] {
+  const host = collectorHost(choices);
+  const onGitHubCom = host === DEFAULT_HOST;
+  const withDataResidency = host.endsWith('.ghe.com');
+  const addresses: CollectorAddress[] = [{ address: 'raw.githubusercontent.com', purpose: msg('Gets the script for the command above'), beforeRun: true }];
+  if (onGitHubCom || withDataResidency) {
+    addresses.push(
+      { address: host, purpose: msg('Sign in with gh auth login'), beforeRun: true },
+      { address: `api.${host}`, purpose: msg('The GitHub API'), beforeRun: false },
+    );
+  } else {
+    addresses.push({ address: host, purpose: msg('Sign in and the GitHub API'), beforeRun: false });
+  }
+  if (onGitHubCom) {
+    addresses.push(
+      { address: 'copilot-reports.github.com', purpose: msg('Activity report files'), beforeRun: false },
+      { address: 'copilot-reports-*.b01.azurefd.net', purpose: msg('Activity report files, backup route'), beforeRun: false },
+      { address: 'usagereports*.blob.core.windows.net', purpose: msg('Activity report files, backup route'), beforeRun: false },
+    );
+    if (choices.scope === 'enterprise') addresses.push({ address: 'mbproduction.blob.core.windows.net', purpose: msg('AI usage report files'), beforeRun: false });
+  } else if (withDataResidency) {
+    addresses.push({ address: `*.${host}`, purpose: msg('Activity report files'), beforeRun: false });
+  }
+  return addresses;
 }
