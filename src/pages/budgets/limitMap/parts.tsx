@@ -1,142 +1,127 @@
 import type { ReactNode } from 'react';
-import { ProgressBar, cx, type Tone } from '../../../components/ui';
+import { BriefcaseBusiness, Building2, CircleDashed, CircleQuestionMark, Globe, UserRound, type LucideIcon } from 'lucide-react';
+import { cx, type Tone } from '../../../components/ui';
 import { msg, t, tp } from '../../../i18n';
-import { HALF_SHARE, NEAR_SHARE, budgetLevel, shareOnDay, type BudgetLevel, type BudgetRow, type LimitBoard, type LimitGroup, type PlaceScope } from '../../../lib/collection';
+import { budgetLevel, roomOf, shareOnDay, type BudgetLevel, type BudgetRow, type LimitBoard, type LimitLane, type LimitTop, type UserLimitKind } from '../../../lib/collection';
 import { fmtInt, fmtPct, fmtUSD } from '../../../lib/utils/format';
-import { levelTone, limitKindLabel } from '../levels';
+import { levelTone } from '../levels';
 
 export const LEVELS: BudgetLevel[] = ['low', 'half', 'near', 'used-up'];
+export type UserKind = UserLimitKind | 'none';
+export const USER_KINDS: UserKind[] = ['own', 'cost-center', 'everyone', 'none'];
+/** Selecting a usage level or a limit type fades the other users. */
+export type Highlight = { by: 'level'; value: BudgetLevel } | { by: 'kind'; value: UserKind };
 
-/** A level of the share used, or users with no limit. */
-export type Highlight = BudgetLevel | 'none';
-
-/** The water in a glass: a light fill with a line on top, in the color of the level. */
-export const WATER: Record<Tone, string> = {
-  neutral: 'border-fg-subtle bg-fg-subtle/15',
-  good: 'border-good bg-good/15',
-  warn: 'border-warn bg-warn/15',
-  bad: 'border-bad bg-bad/20',
-  info: 'border-info bg-info/15',
-  accent: 'border-accent bg-accent/15',
-};
-
-/** The fill of a small user glass: stronger than the water of a big glass, so it reads at a small size. */
 export const TILE_FILL: Record<Tone, string> = {
-  neutral: 'bg-fg-subtle/55',
-  good: 'bg-good/65',
-  warn: 'bg-warn/75',
-  bad: 'bg-bad',
-  info: 'bg-info/65',
-  accent: 'bg-accent/65',
+  neutral: 'bg-fg-subtle/55', good: 'bg-good/65', warn: 'bg-warn/75', bad: 'bg-bad', info: 'bg-info/65', accent: 'bg-accent/65',
+};
+/** The frame turns orange near its limit and red when used up. */
+export const FRAME_BORDER: Record<BudgetLevel, string> = { low: 'border-fg-muted', half: 'border-fg-muted', near: 'border-warn', 'used-up': 'border-bad' };
+
+const KIND_LABELS: Record<UserKind, string> = {
+  own: msg('Individual limit'), 'cost-center': msg('Cost center default'), everyone: msg('Universal default'), none: msg('No user limit found'),
+};
+export const kindLabel = (kind: UserKind): string => t(KIND_LABELS[kind]);
+
+export const KIND_ABOUT: Record<UserKind, string> = {
+  own: msg('An individual limit replaces cost center and universal user limits. Shared spending controls still apply.'),
+  'cost-center': msg('Each person has this amount, not a share of one group budget. Individual limits take priority.'),
+  everyone: msg('The universal default applies when no individual or cost center user limit takes priority.'),
+  none: msg('No user limit was found in the file. This does not prove that usage is unlimited.'),
 };
 
-/** The lines of the drawing: darker than the lines of a panel, like ink on paper. */
-export const INK = 'border-fg-subtle/70';
+/** One icon per place a limit is set, so a limit type looks the same in the legend, the map and the details. */
+export const KIND_ICONS: Record<UserKind, LucideIcon> = { own: UserRound, 'cost-center': BriefcaseBusiness, everyone: Globe, none: CircleDashed };
+export const topIcon = (top: LimitTop): LucideIcon => (top.scope === 'enterprise' ? Globe : Building2);
 
-/** The order in which GitHub checks the limits for a request that uses AI credits. */
-export const CHECK_ORDER = [
-  msg('The limit of the user: their own budget, else their cost center limit, else the limit for each user.'),
-  msg('Included credits pay for the usage while they last.'),
-  msg('The spending limit of the cost center or organization, for the amount billed.'),
-  msg('The spending limit of the enterprise, for the amount billed.'),
-];
-
-export const SCOPE_NAMES: Record<PlaceScope, string> = {
-  enterprise: msg('Enterprise account'),
-  organization: msg('Organization'),
-  cost_center: msg('Cost center'),
-  repository: msg('Repository'),
-};
-
-export const GROUP_ABOUT: Record<LimitGroup['kind'], string> = {
-  own: msg('Users with a budget of their own. Their own budget is the only limit that holds them.'),
-  'cost-center': msg('Users of this cost center. Its limit for each user holds them, unless they have a budget of their own.'),
-  everyone: msg('Users without a budget of their own and outside the cost centers with a limit. The limit for each user holds them.'),
-  none: msg('Users without a budget of their own and outside the cost centers with a limit. No limit holds them.'),
-};
-
-/** The kind of limit that holds a group, or "No limit". */
-export const groupKindLabel = (kind: LimitGroup['kind']): string => (kind === 'none' ? t('No limit') : limitKindLabel(kind));
-
-/** The name of a group: its cost center, or who is in it. */
-export function groupTitle(group: LimitGroup): string {
-  if (group.kind === 'cost-center') return group.name;
-  if (group.kind === 'own') return t('Users with a budget of their own');
-  if (group.kind === 'everyone') return t('All other users');
-  return t('Users with no limit');
+export function laneIcon(lane: LimitLane, top: LimitTop): LucideIcon {
+  if (lane.kind === 'cost_center') return BriefcaseBusiness;
+  if (lane.kind === 'organization') return Building2;
+  if (lane.kind === 'top') return topIcon(top);
+  return CircleQuestionMark;
 }
 
+/** Text with the icon of its limit type in front. The icon follows the text size and sits on the first line. The text names the type, so the icon is hidden. */
+export function WithIcon({ Icon, children, className }: { Icon: LucideIcon; children: ReactNode; className?: string }) {
+  return (
+    <span className={cx('inline-flex min-w-0 items-start gap-1', className)}>
+      <span className="flex h-[1lh] shrink-0 items-center">
+        <Icon className="size-[1.15em]" strokeWidth={2} aria-hidden />
+      </span>
+      <span className="min-w-0">{children}</span>
+    </span>
+  );
+}
+
+export const topLabel = (top: LimitTop): string => (top.scope === 'enterprise' ? t('Enterprise limit') : t('Organization limit'));
+
+export function laneEyebrow(lane: LimitLane): string {
+  if (lane.kind === 'cost_center') return t('Cost center');
+  if (lane.kind === 'organization') return t('Organization');
+  if (lane.kind === 'top') return t('Other users');
+  return t('Check in GitHub');
+}
+
+export function laneTitle(lane: LimitLane, top: LimitTop): string {
+  if (lane.kind === 'cost_center' || lane.kind === 'organization') return lane.name;
+  if (lane.kind === 'top') return top.scope === 'enterprise' ? t('Only the enterprise limit') : t('Only the organization limit');
+  return t('Spending limit not clear');
+}
+
+export function laneAbout(lane: LimitLane, top: LimitTop): string {
+  if (lane.kind === 'cost_center') {
+    return lane.countedByTop
+      ? t('Billed usage of its members checks this limit and, by default, the enterprise limit. Members are assigned directly, through a team or through an organization.')
+      : t('GitHub bills the usage of its members to this cost center of the enterprise, so the organization limit does not count it.');
+  }
+  if (lane.kind === 'organization') return t('Billed usage of users not in a cost center, whose seat this organization pays for. It can only set a lower limit than the enterprise.');
+  if (lane.kind === 'top') {
+    return top.scope === 'enterprise'
+      ? t('These users are not in a cost center, and their seat organization has no spending limit. Only the enterprise limit holds their billed usage.')
+      : t('Only the organization limit holds their billed usage.');
+  }
+  return t('These users have seats in several organizations, or no seat in the file. GitHub picks one organization each billing cycle, so the file cannot say which limit it checks.');
+}
+
+/** Amounts under 100 USD keep cents. */
+export const money = (amount: number): string => fmtUSD(amount, Math.abs(amount) >= 100 ? 0 : 2);
+export const roomText = (room: number | null): string => (room === null ? t('Not known') : room <= 0 ? t('None left') : money(room));
 export const usersText = (count: number): string => tp(count, '1 user', '{n} users', { n: fmtInt(count) });
-
-/** The level of a share, or null for users with no limit. */
 export const levelOfShare = (share: number): BudgetLevel | null => (Number.isFinite(share) ? budgetLevel(share) : null);
+export const limitName = (row: BudgetRow): string => (row.budget.aiCredits ? t('AI credits') : t('All of GitHub Copilot'));
 
-/** The share of the limit each user had used: now (null) or by the end of a day of the month. NaN for users with no limit. */
 export function sharesOn(board: LimitBoard, day: number | null): Float32Array {
   const shares = new Float32Array(board.users.length);
   board.users.forEach((user, userIndex) => {
-    shares[userIndex] = (day === null ? user.share : shareOnDay(board, userIndex, day)) ?? Number.NaN;
+    // Zero is an immediate stop, drawn full but never labeled as a percentage.
+    shares[userIndex] = user.limit === 0 ? 1 : (day === null ? user.share : shareOnDay(board, userIndex, day)) ?? Number.NaN;
   });
   return shares;
 }
 
-/** A glass filled from the bottom to the share used, with small marks at 50% and 80%. The caller places it (relative or absolute). */
-export function Glass({ share, level, marks = false, className }: { share: number | null; level: BudgetLevel | null; marks?: boolean; className?: string }) {
-  const fill = share === null ? 0 : Math.min(1, Math.max(0, share));
+/** A bar of the share used. `wall` marks where a broader limit is reached first. Decorative: the text beside it says the same. */
+export function Gauge({ share, level, wall, height = 'h-1.5' }: { share: number | null; level: BudgetLevel | null; wall?: number | null; height?: string }) {
+  const tone = level !== null ? levelTone(level) : 'neutral';
   return (
-    <span className={cx('block overflow-hidden bg-surface', className)} aria-hidden>
-      {fill > 0 ? (
-        <span
-          className={cx('absolute inset-x-0 bottom-0 border-t-2 transition-[height] duration-300 motion-reduce:transition-none', WATER[level !== null ? levelTone(level) : 'neutral'])}
-          style={{ height: `${fill * 100}%` }}
-        />
-      ) : null}
-      {marks
-        ? [HALF_SHARE, NEAR_SHARE].map((mark) => <span key={mark} className="absolute start-0 h-px w-1.5 bg-fg-subtle/60" style={{ bottom: `${mark * 100}%` }} />)
-        : null}
+    <span className={cx('relative block w-full overflow-hidden rounded-xs bg-surface-3', height)} aria-hidden>
+      <span className={cx('absolute inset-y-0 start-0', TILE_FILL[tone])} style={{ width: `${Math.min(1, Math.max(0, share ?? 0)) * 100}%` }} />
+      {wall !== undefined && wall !== null && wall < 1 ? <span className="absolute inset-y-0 w-0.5 bg-fg" style={{ insetInlineStart: `${Math.max(0, wall) * 100}%` }} /> : null}
     </span>
   );
 }
 
-/** Above this share the reading sits just under the water line, inside the water; at or below it, just above the line. */
-const READING_INSIDE = 0.6;
-
-/** The share used, written at the water line of a pane so the line never crosses it. */
-export function Reading({ share, size = 'sm' }: { share: number; size?: 'sm' | 'base' }) {
-  const fill = Math.min(1, Math.max(0, share));
-  const style = fill > READING_INSIDE ? { top: `calc(${(1 - fill) * 100}% + 3px)` } : { bottom: `calc(${fill * 100}% + 3px)` };
-  return (
-    <span className={cx('num absolute inset-x-0 text-center font-display font-semibold', size === 'base' ? 'text-base leading-6' : 'text-xs leading-4')} style={style}>
-      {fmtPct(share, 0)}
-    </span>
-  );
-}
-
-/** The panes of a place: one glass for each spending limit, each filled to the share used. */
-export function Panes({ rows, className, size = 'sm' }: { rows: BudgetRow[]; className?: string; size?: 'sm' | 'base' }) {
-  return (
-    <span className={cx('flex gap-[3px] border bg-surface p-[3px]', INK, className)}>
-      {rows.map((row) => (
-        <span key={row.budget.id} className={cx('relative min-w-0 flex-1 border', row.share === null ? 'border-dashed border-border' : 'border-border')}>
-          <Glass share={row.share} level={row.level} marks className="absolute inset-0" />
-          {row.share !== null ? <Reading share={row.share} size={size} /> : null}
-        </span>
-      ))}
-    </span>
-  );
-}
-
+/** One spending limit: what it counts, the amount, how full it is and the room left. */
 export function SpendingLimit({ row }: { row: BudgetRow }) {
-  const tone = row.level !== null ? levelTone(row.level) : 'neutral';
+  const room = roomOf(row);
   return (
     <div className="min-w-0 space-y-1">
-      <div className="flex items-baseline justify-between gap-2 text-xs">
-        <span className="min-w-0 truncate text-fg-muted">{row.budget.aiCredits ? t('Spending limit') : t('Spending limit, all of GitHub Copilot')}</span>
+      <div className="flex flex-wrap items-baseline justify-between gap-1 text-xs">
+        <span className="text-fg-muted">{limitName(row)}</span>
         <span className="num font-medium">{fmtUSD(row.budget.amount, 0)}</span>
       </div>
-      <ProgressBar value={row.share ?? 0} tone={tone} height={6} label={t('Share of the budget used')} />
-      <div className="flex items-baseline justify-between gap-2 text-[11px] text-fg-subtle">
-        <span className="num">{row.share === null ? t('Amount used not known') : t('{share} used', { share: fmtPct(row.share, 0) })}</span>
+      <Gauge share={row.share} level={row.level} />
+      <div className="flex flex-wrap items-baseline justify-between gap-1 text-[11px] text-fg-subtle">
+        <span className="num">{row.share === null ? t('Amount used not known') : `${t('{share} used', { share: fmtPct(row.share, 0) })} · ${t('{amount} left', { amount: roomText(room) })}`}</span>
         <span>{row.budget.stopsUsage ? t('Stops usage') : t('Alerts only')}</span>
       </div>
     </div>
@@ -145,35 +130,18 @@ export function SpendingLimit({ row }: { row: BudgetRow }) {
 
 export function Fact({ label, children }: { label: ReactNode; children: ReactNode }) {
   return (
-    <div className="flex items-baseline justify-between gap-2 text-xs">
-      <span className="shrink-0 text-fg-muted">{label}</span>
-      <span className="num min-w-0 truncate text-end font-medium">{children}</span>
+    <div className="flex flex-wrap items-baseline justify-between gap-2 text-xs">
+      <span className="text-fg-muted">{label}</span>
+      <span className="num min-w-0 break-words text-end font-medium">{children}</span>
     </div>
   );
 }
 
-export function Heading({ eyebrow, title }: { eyebrow: string; title: string }) {
+export function Heading({ eyebrow, title, Icon }: { eyebrow: string; title: string; Icon?: LucideIcon }) {
   return (
     <div className="min-w-0">
-      <p className="eyebrow text-fg-subtle">{eyebrow}</p>
-      <p className="truncate font-display text-base font-semibold" title={title}>
-        {title}
-      </p>
+      <p className="eyebrow text-fg-subtle">{Icon ? <WithIcon Icon={Icon}>{eyebrow}</WithIcon> : eyebrow}</p>
+      <p className="break-words font-display text-base font-semibold">{title}</p>
     </div>
-  );
-}
-
-/** A step of the order GitHub checks, as a small square number. */
-export function Step({ step, active = false }: { step: number; active?: boolean }) {
-  return (
-    <span
-      className={cx(
-        'num inline-flex size-5 shrink-0 items-center justify-center rounded-[3px] border text-[11px] font-semibold',
-        active ? 'border-accent bg-accent text-accent-fg' : 'border-border bg-surface-2 text-fg',
-      )}
-      aria-hidden
-    >
-      {fmtInt(step)}
-    </span>
   );
 }

@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react';
-import { ArrowLeft, Pause, Play, RotateCcw } from 'lucide-react';
+import { ArrowLeft, Pause, Play, RotateCcw, type LucideIcon } from 'lucide-react';
 import { Card, SearchInput, Slider, cx } from '../../../components/ui';
 import { t, tp } from '../../../i18n';
-import { limitBoard, limitFocus, monthOfKey, type BudgetMap, type Collection, type LimitBoard, type LimitTarget } from '../../../lib/collection';
+import { limitBoard, limitFocus, monthOfKey, type BudgetLevel, type BudgetMap, type Collection, type LimitBoard, type LimitTarget } from '../../../lib/collection';
 import type { DataStore } from '../../../lib/types';
 import { fmtDay, monthLabel, monthStartDay } from '../../../lib/utils/date';
 import { fmtInt } from '../../../lib/utils/format';
@@ -10,46 +10,64 @@ import { levelLabel, levelTone } from '../levels';
 import { Board } from './Board';
 import { Details } from './Details';
 import { HoverTip } from './HoverTip';
-import { LEVELS, TILE_FILL, levelOfShare, sharesOn, type Highlight } from './parts';
+import { KIND_ICONS, LEVELS, TILE_FILL, USER_KINDS, WithIcon, kindLabel, levelOfShare, sharesOn, usersText, type Highlight, type UserKind } from './parts';
 
 const ALL: LimitTarget = { kind: 'all' };
 /** How long each day shows when the month plays. */
 const DAY_MILLISECONDS = 450;
 const SEARCH_RESULTS = 8;
 
-/** The colors of the user glasses, with a count for each. Selecting one fades the rest. */
-function Legend({ shares, highlight, onHighlight }: { shares: Float32Array; highlight: Highlight | null; onHighlight: (value: Highlight | null) => void }) {
+/** Selecting a level or a limit type fades the other users. */
+function Legend({ board, shares, highlight, onHighlight }: { board: LimitBoard; shares: Float32Array; highlight: Highlight | null; onHighlight: (value: Highlight | null) => void }) {
   const counts = useMemo(() => {
-    const result: Record<Highlight, number> = { low: 0, half: 0, near: 0, 'used-up': 0, none: 0 };
-    for (const share of shares) result[levelOfShare(share) ?? 'none']++;
-    return result;
-  }, [shares]);
-  const items: { value: Highlight; label: string; swatch: string }[] = [
-    ...LEVELS.map((level) => ({ value: level, label: levelLabel(level), swatch: TILE_FILL[levelTone(level)] })),
-    { value: 'none', label: t('No limit'), swatch: 'border border-dashed border-fg-subtle/60 bg-surface' },
+    const levels: Record<BudgetLevel, number> = { low: 0, half: 0, near: 0, 'used-up': 0 };
+    const kinds: Record<UserKind, number> = { own: 0, 'cost-center': 0, everyone: 0, none: 0 };
+    for (const share of shares) {
+      const level = levelOfShare(share);
+      if (level !== null) levels[level]++;
+    }
+    for (const user of board.users) kinds[user.kind]++;
+    return { levels, kinds };
+  }, [board, shares]);
+  const groups: { title: string; items: { value: Highlight; label: string; swatch: string; count: number; Icon?: LucideIcon }[] }[] = [
+    {
+      title: t('User limit used'),
+      items: LEVELS.map((level) => ({ value: { by: 'level', value: level }, label: levelLabel(level), swatch: cx('border border-fg-subtle/70', TILE_FILL[levelTone(level)]), count: counts.levels[level] })),
+    },
+    {
+      title: t('Limit type'),
+      items: USER_KINDS.map((kind) => ({
+        value: { by: 'kind', value: kind },
+        label: kindLabel(kind),
+        swatch: cx('bg-surface-3', kind === 'own' ? 'border-2 border-fg' : kind === 'none' ? 'border border-dashed border-fg-subtle' : 'border border-fg-subtle/70'),
+        count: counts.kinds[kind],
+        Icon: KIND_ICONS[kind],
+      })),
+    },
   ];
   return (
-    <div className="space-y-1.5 border-t border-border-muted pt-3">
-      <p className="eyebrow text-fg-subtle">{t('Colors of the user glasses')}</p>
-      <div className="flex flex-wrap gap-1.5">
-        {items.map((item) => {
-          const pressed = highlight === item.value;
-          return (
-            <button
-              key={item.value}
-              type="button"
-              aria-pressed={pressed}
-              className={cx('inline-flex items-center gap-1.5 rounded-[3px] border px-1.5 py-0.5 text-[11px] hover:bg-surface-2', pressed ? 'border-accent bg-accent-soft' : 'border-border-muted')}
-              onClick={() => onHighlight(pressed ? null : item.value)}
-            >
-              <span className={cx('inline-block h-3 w-2', item.swatch)} aria-hidden />
-              <span>{item.label}</span>
-              <span className="num text-fg-muted">{fmtInt(counts[item.value])}</span>
-            </button>
-          );
-        })}
-      </div>
-      <p className="text-[11px] text-fg-subtle">{t('Select a color to fade the other users.')}</p>
+    <div className="no-print flex flex-wrap items-center gap-x-5 gap-y-2">
+      {groups.map((group) => (
+        <div key={group.title} role="group" aria-label={group.title} className="flex flex-wrap items-center gap-1.5">
+          <span className="eyebrow me-0.5 text-fg-subtle">{group.title}</span>
+          {group.items.map((item) => {
+            const pressed = highlight !== null && highlight.by === item.value.by && highlight.value === item.value.value;
+            return (
+              <button
+                key={`${item.value.by}|${item.value.value}`}
+                type="button"
+                aria-pressed={pressed}
+                className={cx('inline-flex min-h-6 items-center gap-1.5 rounded-[3px] border px-1.5 py-0.5 text-[11px] hover:bg-surface-2', pressed ? 'border-accent bg-accent-soft' : 'border-border-muted')}
+                onClick={() => onHighlight(pressed ? null : item.value)}
+              >
+                <span className={cx('inline-block size-3 rounded-[2px]', item.swatch)} aria-hidden />
+                {item.Icon ? <WithIcon Icon={item.Icon}>{item.label}</WithIcon> : <span>{item.label}</span>}
+                <span className="num text-fg-muted">{usersText(item.count)}</span>
+              </button>
+            );
+          })}
+        </div>
+      ))}
     </div>
   );
 }
@@ -60,10 +78,7 @@ export interface LimitMapCardProps {
   store: DataStore;
 }
 
-/**
- * The AI credit limits on one map, read from the bottom up in the order GitHub checks them. Selecting a user, a group
- * or a glass marks every limit that holds it with the number of its step, and the side panel explains each step.
- */
+/** Independent user limits and spending controls, with details for the selection. */
 export function LimitMapCard({ collection, map, store }: LimitMapCardProps) {
   const board: LimitBoard = useMemo(() => limitBoard(collection, store, map), [collection, store, map]);
   const [target, setTarget] = useState<LimitTarget>(ALL);
@@ -71,17 +86,17 @@ export function LimitMapCard({ collection, map, store }: LimitMapCardProps) {
   const [playing, setPlaying] = useState(false);
   const [query, setQuery] = useState('');
   const [highlight, setHighlight] = useState<Highlight | null>(null);
-  const [allPlaces, setAllPlaces] = useState(false);
-  const [openGroups, setOpenGroups] = useState<ReadonlySet<number>>(() => new Set());
+  const [openLanes, setOpenLanes] = useState<ReadonlySet<number>>(() => new Set());
   const figure = useRef<HTMLDivElement>(null);
+  const details = useRef<HTMLDivElement>(null);
   const scrollTo = useRef<string | null>(null);
 
-  // New data means new places, groups and users, so a selection of the old data no longer applies.
+  // New data means new lanes and users, so a selection of the old data no longer applies.
   useEffect(() => {
     setTarget(ALL);
     setDay(null);
     setPlaying(false);
-    setOpenGroups((current) => (current.size === 0 ? current : new Set()));
+    setOpenLanes((current) => (current.size === 0 ? current : new Set()));
   }, [board]);
 
   const shares = useMemo(() => sharesOn(board, day), [board, day]);
@@ -89,18 +104,24 @@ export function LimitMapCard({ collection, map, store }: LimitMapCardProps) {
   const userIds = useMemo(() => new Map(store.dicts.user.values.map((login, id) => [login.toLowerCase(), id])), [store]);
 
   const choose = useCallback((next: LimitTarget) => setTarget(next), []);
-  const onOpenGroup = useCallback(
-    (groupIndex: number, open: boolean) =>
-      setOpenGroups((current) => {
+  const onOpenLane = useCallback(
+    (laneIndex: number, open: boolean) =>
+      setOpenLanes((current) => {
         const next = new Set(current);
-        if (open) next.add(groupIndex);
-        else next.delete(groupIndex);
+        if (open) next.add(laneIndex);
+        else next.delete(laneIndex);
         return next;
       }),
     [],
   );
 
   useEffect(() => {
+    if (target.kind !== 'all' && window.matchMedia('(max-width: 1023px)').matches) {
+      details.current?.scrollIntoView({ block: 'nearest' });
+      details.current?.focus({ preventScroll: true });
+      scrollTo.current = null;
+      return;
+    }
     const anchor = scrollTo.current;
     if (anchor === null) return;
     scrollTo.current = null;
@@ -147,7 +168,7 @@ export function LimitMapCard({ collection, map, store }: LimitMapCardProps) {
 
   const onFigureClick = (event: MouseEvent<HTMLDivElement>) => {
     if (target.kind === 'all') return;
-    if (event.target instanceof Element && event.target.closest('button, a, input, section')) return;
+    if (event.target instanceof Element && event.target.closest('button, a, input')) return;
     setTarget(ALL);
   };
   const onFigureKey = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -160,7 +181,7 @@ export function LimitMapCard({ collection, map, store }: LimitMapCardProps) {
     <Card
       title={t('Limit map')}
       calc="budget-map"
-      subtitle={t('Each limit is a glass that fills as AI credits are used. GitHub checks them from the bottom up. Select anything to see the limits that hold it.')}
+      subtitle={t('The outer frame is the limit on all spending. Each row inside is a spending limit. Each square is one person, filled to the share of their user limit used.')}
     >
       <div className="space-y-3">
         <div className="no-print flex flex-wrap items-end gap-x-4 gap-y-2">
@@ -228,9 +249,10 @@ export function LimitMapCard({ collection, map, store }: LimitMapCardProps) {
         {day !== null ? (
           <p className="text-xs text-fg-muted">
             {t('Shown: usage up to the end of {day}, from the usage report. {month} has {days} days.', { day: dayText(day), month: monthLabel(monthIndex), days: board.month.days })}{' '}
-            {t('The large glasses show the spending limits as GitHub showed them when the data was collected.')}
+            {t('Current limits are applied to past usage for comparison. Spending budgets stay at the collection snapshot. This is not a history of who was blocked.')}
           </p>
         ) : null}
+        <Legend board={board} shares={shares} highlight={highlight} onHighlight={setHighlight} />
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_19rem]">
           <div ref={figure} className="relative isolate min-w-0" onClick={onFigureClick} onKeyDown={onFigureKey}>
             <Board
@@ -240,23 +262,20 @@ export function LimitMapCard({ collection, map, store }: LimitMapCardProps) {
               target={target}
               focus={focus}
               highlight={highlight}
-              allPlaces={allPlaces}
-              onAllPlaces={setAllPlaces}
-              openGroups={openGroups}
-              onOpenGroup={onOpenGroup}
+              openLanes={openLanes}
+              onOpenLane={onOpenLane}
               choose={choose}
             />
             <HoverTip figure={figure} />
           </div>
-          <div className="min-w-0 space-y-3 self-start rounded-md border border-border bg-surface p-3 lg:sticky lg:top-4" aria-live="polite">
+          <div ref={details} tabIndex={-1} aria-label={t('Limit details')} className={cx('min-w-0 space-y-3 self-start rounded-md border border-border bg-surface p-3 lg:sticky lg:top-4', target.kind !== 'all' && 'order-first lg:order-last')} aria-live="polite">
             {target.kind !== 'all' ? (
               <button type="button" className="no-print inline-flex items-center gap-1 text-xs text-accent hover:underline" onClick={() => setTarget(ALL)}>
                 <ArrowLeft size={13} className="rtl:rotate-180" aria-hidden />
                 {t('Back to the whole picture')}
               </button>
             ) : null}
-            <Details board={board} target={target} focus={focus} shares={shares} day={day} store={store} userIds={userIds} choose={choose} />
-            <Legend shares={shares} highlight={highlight} onHighlight={setHighlight} />
+            <Details board={board} target={target} shares={shares} day={day} store={store} userIds={userIds} choose={choose} />
           </div>
         </div>
         <p className="text-[11px] text-fg-subtle">

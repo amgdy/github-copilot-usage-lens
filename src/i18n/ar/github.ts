@@ -17,6 +17,11 @@ const arabic: Dict = {
   'The usage data comes from the AI usage report in this file: {months}.': 'بيانات الاستخدام مأخوذة من تقرير استخدام الذكاء الاصطناعي في هذا الملف: {months}.',
   'GitHub had not made the AI usage report for {months} yet. Run the script again in a few minutes to add it.':
     'لم يكن GitHub قد أعدّ تقرير استخدام الذكاء الاصطناعي عن {months} بعد. شغّل السكربت مرة أخرى بعد بضع دقائق لإضافته.',
+  'The AI usage report for {months} has no usage.': 'لا يحوي تقرير استخدام الذكاء الاصطناعي عن {months} أي استخدام.',
+  'The AI usage report for {month} has no usage yet. Run the script again later to add new usage.':
+    'لا يحوي تقرير استخدام الذكاء الاصطناعي عن {month} أي استخدام بعد. شغّل السكربت مرة أخرى لاحقًا لإضافة الاستخدام الجديد.',
+  'GitHub did not give the AI usage report for {months}. The Data page says why.':
+    'لم يُرجع GitHub تقرير استخدام الذكاء الاصطناعي عن {months}. توضّح صفحة البيانات السبب.',
   'The AI usage report in this file was not used, because you chose a usage report CSV too.':
     'لم يُستخدم تقرير استخدام الذكاء الاصطناعي في هذا الملف، لأنك اخترت ملف تقرير استخدام (CSV) أيضًا.',
   'Some organizations did not give their seat list, so the list may be short.': 'لم تُرجع بعض المؤسسات قائمة تراخيصها، لذا قد تكون القائمة ناقصة.',

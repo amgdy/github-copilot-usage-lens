@@ -158,8 +158,17 @@ function collectionLines(collection: CollectionFileResult): string[] {
   if (collection.usageMonths.length > 0) {
     lines.push(t('The usage data comes from the AI usage report in this file: {months}.', { months: monthNames(collection.usageMonths) }));
   }
+  if (collection.usageEmpty.length > 0) {
+    lines.push(t('The AI usage report for {months} has no usage.', { months: monthNames(collection.usageEmpty) }));
+  }
+  if (collection.usageOpenEmpty !== null) {
+    lines.push(t('The AI usage report for {month} has no usage yet. Run the script again later to add new usage.', { month: monthNames([collection.usageOpenEmpty]) }));
+  }
+  if (collection.usageWaiting.length > 0) {
+    lines.push(t('GitHub had not made the AI usage report for {months} yet. Run the script again in a few minutes to add it.', { months: monthNames(collection.usageWaiting) }));
+  }
   if (collection.usageMissing.length > 0) {
-    lines.push(t('GitHub had not made the AI usage report for {months} yet. Run the script again in a few minutes to add it.', { months: monthNames(collection.usageMissing) }));
+    lines.push(t('GitHub did not give the AI usage report for {months}. The Data page says why.', { months: monthNames(collection.usageMissing) }));
   }
   if (collection.usageNotUsed) lines.push(t('The AI usage report in this file was not used, because you chose a usage report CSV too.'));
   if (!collection.complete) lines.push(t('The file ends early, so some data may be missing. Run the script again and wait until it says the file is saved.'));
@@ -184,7 +193,7 @@ function noticeTitle(notice: UploadNotice): string {
 function noticeTone(notice: UploadNotice): 'good' | 'warn' | 'bad' | 'info' {
   const collection = notice.collection;
   if (collection?.error) return 'bad';
-  const collectionOk = collection === null || (collection.complete && collection.problems === 0);
+  const collectionOk = collection === null || (collection.complete && collection.problems === 0 && collection.usageWaiting.length === 0 && collection.usageMissing.length === 0);
   if (notice.mode !== null) return notice.saved === 'saved' && collectionOk ? 'good' : 'warn';
   if (collection !== null) return collectionOk && notice.files.length === 0 ? 'good' : 'warn';
   return notice.files.length > 0 ? 'warn' : 'info';

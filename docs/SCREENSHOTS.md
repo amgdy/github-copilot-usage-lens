@@ -42,11 +42,11 @@ How the included credits are spent. It shows usage over time, how fast each mont
 
 ## Budgets
 
-The Limit map shows the order GitHub checks limits, from each user's limit at the bottom to the enterprise spending limit at the top. Select a user to mark the limits that hold them. The numbered steps and moving line show the path, and the side panel explains each limit.
+The Limit map draws the enterprise limit as a frame around all spending. Each row inside is a spending limit, a cost center or a seat organization, with its room left and a square for each person it holds. A square fills to the share of that person's user limit used. Icons mark where each limit is set: a globe for the enterprise and the universal default, a building for an organization, a briefcase for a cost center and a person for an individual limit. The strip under the frame adds up the limits inside. Select a square to see the user's effective limit, the defaults it replaces and the spending limits that also apply. Missing paid usage policies and enterprise exclusions are clearly noted.
 
-![Budgets page with the full Limit map](screenshots/budgets.png)
+![Limit map: the enterprise limit as a frame, with a row for each spending limit and a square for each person](screenshots/budgets.png)
 
-![Limit map with a selected user and the limits that hold them](screenshots/budgets-selected.png)
+![Selected user with an individual limit and replaced defaults](screenshots/budgets-selected.png)
 
 ## Recommendations
 

@@ -4,7 +4,8 @@ import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { gunzipSync } from 'node:zlib';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { collectionLicenseParse, pickBudget, readCollection } from '../src/lib/collection';
+import { collectionLicenseParse, pickBudget, readCollection, usageReportState } from '../src/lib/collection';
+import { EMPTY_REPORT_MESSAGE, REPORT_WAITING_MESSAGES } from '../src/lib/collection/types';
 import { storedText } from './collectionLines';
 import { GH_DEFAULT_API_VERSION, MOCK_HOST, MOCK_TOKEN, startMockGitHub, type MockGitHub, type RecordedRequest } from './collectorMock';
 
@@ -351,6 +352,8 @@ describe.skipIf(!CAN_RUN)('data collector scripts against a pretend GitHub', () 
     ]);
     expect(requestsTo(mock.requests, '/settings/billing/reports/report-old')).toHaveLength(1);
     expect(requestsTo(mock.requests, '/settings/billing/reports/report-new')).toHaveLength(2);
+    // Reports GitHub made before their last day ended miss usage, so they are not used.
+    expect(requestLines(mock.requests).filter((line) => /report-old-early|report-today|ai-usage-early|ai-usage-today/.test(line))).toEqual([]);
     expect(sourcesOf(bundle, 'usage-report').map((line) => [line.month, line.status, line.records])).toEqual([
       [olderMonth, 'ok', 3], [newerMonth, 'ok', 1500],
     ]);
@@ -423,6 +426,32 @@ describe.skipIf(!CAN_RUN)('data collector scripts against a pretend GitHub', () 
     expect(skipped.code, skipped.output).toBe(0);
     expect(mock.requests.filter((request) => request.path.includes('/settings/billing/reports'))).toEqual([]);
   }, RUN_TIMEOUT);
+
+  it('reads a finished AI usage report without usage as a month with no usage', async () => {
+    const results = [];
+    for (const mode of HAS_POWERSHELL ? (['bash', 'powershell'] as const) : (['bash'] as const)) {
+      mock.reset();
+      mock.settings.emptyReports = true;
+      const file = join(folder, `empty-report-${mode}.ndjson`);
+      const args = ['--enterprise', 'octocorp', '--months', '2', '--only', 'usage-report', '--plain', '--yes', '--hostname', MOCK_HOST, '--output', file];
+      const result = await run(mode, mode === 'bash' ? args : powershellArgs(args));
+      expect(result.errors, mode).toBe('');
+      expect(result.code, result.output).toBe(0);
+      expect(result.output, mode).toContain('It has your AI usage report too, so you need no other file.');
+      results.push(readBundle(file));
+    }
+    const [bundle, powershellBundle] = results;
+    if (powershellBundle) expect(comparable(powershellBundle)).toEqual(comparable(bundle));
+
+    const [olderMonth, newerMonth] = mock.usageMonths;
+    expect(sourcesOf(bundle, 'usage-report').map((line) => [line.month, line.status, line.records, line.http, line.message])).toEqual([
+      [olderMonth, 'ok', 3, 200, ''], [newerMonth, 'ok', 0, 200, EMPTY_REPORT_MESSAGE],
+    ]);
+    const collection = await readCollection(new Blob([bundle.text]), 'empty-report.ndjson');
+    expect(collection.usageReports.map((report) => report.month)).toEqual([olderMonth, olderMonth]);
+    expect(usageReportState(collection.sources, newerMonth)).toBe('complete');
+    expect(leftoverWork()).toEqual([]);
+  }, RUN_TIMEOUT * 2);
 
   it('asks for one AI usage report at a time, as GitHub makes only one at a time', async () => {
     const file = join(folder, 'report-queue.ndjson');
@@ -662,5 +691,13 @@ describe.skipIf(!CAN_RUN)('data collector scripts against a pretend GitHub', () 
       expect((await run('powershell', ['-Version'])).output).toMatch(/^collect\.ps1 \d+\.\d+\.\d+/);
       expect(mock.requests).toHaveLength(0);
     }, RUN_TIMEOUT);
+  });
+});
+
+describe('data collector script messages the app reads', () => {
+  it.each(['collect.sh', 'collect.ps1'])('%s writes the AI usage report messages the app knows', (name) => {
+    const text = readFileSync(join(ROOT, 'scripts', name), 'utf8');
+    expect(text).toContain(EMPTY_REPORT_MESSAGE);
+    for (const start of REPORT_WAITING_MESSAGES) expect(text).toContain(start);
   });
 });

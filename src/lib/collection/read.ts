@@ -5,6 +5,8 @@ import { isoDate, parseIsoDay } from '../utils/date';
 import {
   COLLECTION_FORMAT,
   COLLECTION_VERSION,
+  EMPTY_REPORT_MESSAGE,
+  OLD_EMPTY_REPORT_MESSAGE,
   type AuditEvent,
   type AuditKind,
   type BillingMonth,
@@ -391,6 +393,10 @@ export class CollectionReader {
       message: text(line.message, 300) ?? '',
     };
     if (typeof line.month === 'string' && MONTH.test(line.month)) source.month = line.month;
+    if (source.id === 'usage-report' && source.status === 'failed' && source.message === OLD_EMPTY_REPORT_MESSAGE) {
+      source.status = 'ok';
+      source.message = EMPTY_REPORT_MESSAGE;
+    }
     // Some parts take several requests, such as the users of each budget or each topic of the audit log.
     const key = `${source.id}|${source.scope}|${source.target}|${source.month ?? ''}`;
     const part = this.sourceIndex.get(key);

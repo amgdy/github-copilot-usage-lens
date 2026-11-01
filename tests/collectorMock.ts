@@ -29,13 +29,16 @@ export const GH_DEFAULT_API_VERSION = '2022-11-28';
 export interface MockSettings {
   /** Answer 400 to any newer API version than gh's default, like a GitHub that does not know it yet. */
   rejectApiVersion: boolean;
+  /** The AI usage reports GitHub makes when asked have no usage, so GitHub gives no file for them. */
+  emptyReports: boolean;
 }
 
 export interface MockGitHub {
   proxyUrl: string;
   /**
-   * The two months of the AI usage reports, oldest first. GitHub keeps a finished report for the older one. For any
-   * other month GitHub makes a report when asked, but only one at a time: it answers 409 while it makes another.
+   * The two months of the AI usage reports, oldest first. GitHub keeps a finished report for the older one, made after
+   * the month ended. For any other month GitHub makes a report when asked, but only one at a time: it answers 409
+   * while it makes another.
    */
   usageMonths: [string, string];
   requests: RecordedRequest[];
@@ -159,9 +162,17 @@ function usageReportFiles(olderMonth: string, newerMonth: string): Record<string
   };
 }
 
-function usageReport(id: string, start: string, end: string, status: string, type = 'ai_credit', links: string[] = []) {
+interface UsageReportOptions {
+  type?: string;
+  links?: string[];
+  /** When GitHub made the report. The first day of the report when not given. */
+  madeAt?: string;
+}
+
+function usageReport(id: string, start: string, end: string, status: string, options: UsageReportOptions = {}) {
+  const { type = 'ai_credit', links = [], madeAt = `${start}T08:00:00Z` } = options;
   return {
-    id, report_type: type, start_date: `${start}T00:00:00Z`, end_date: `${end}T00:00:00Z`, status, created_at: `${start}T08:00:00Z`,
+    id, report_type: type, start_date: `${start}T00:00:00Z`, end_date: `${end}T00:00:00Z`, status, created_at: madeAt,
     actor: { login: 'lens-admin', name: 'Private Admin Name' }, download_urls: links.map((link) => `${DOWNLOADS}/${link}`),
   };
 }
@@ -178,7 +189,7 @@ function auditEvent(action: string, user: string, extra: Record<string, unknown>
 
 export async function startMockGitHub(certificate: string, privateKey: string): Promise<MockGitHub> {
   const requests: RecordedRequest[] = [];
-  const settings: MockSettings = { rejectApiVersion: false };
+  const settings: MockSettings = { rejectApiVersion: false, emptyReports: false };
   const counts = new Map<string, number>();
   const today = Temporal.Now.plainDateISO('UTC');
   const reportLastDay = today.subtract({ days: 1 }).toString();
@@ -197,15 +208,22 @@ export async function startMockGitHub(certificate: string, privateKey: string): 
   // The reports the script asked for, by id. GitHub is still making one until the script has looked at it once.
   const madeReports = new Map<string, { start: string; end: string; link: string }>();
   const stillMaking = () => [...madeReports.keys()].some((id) => (counts.get(`/api/v3${reportsPath}/${id}`) ?? 0) < 2);
-  // Only report-old fits: the others are still being made, of another type, failed, too old or for two months.
+  // Only report-old fits. The others are still being made, of another type, failed, too old or for two months, or
+  // GitHub made them before their last day ended, so they miss usage: report-old-early on the last day of the older
+  // month, and report-today today, when this month is not over.
   const usageReports = [
     usageReport('report-old-processing', olderStart, olderEnd, 'processing'),
-    usageReport('report-old', olderStart, olderEnd, 'completed', 'ai_credit', ['signed/ai-usage-old-1.csv', 'ai-usage-old-2.csv.gz']),
-    usageReport('report-detailed', newerStart, today.toString(), 'completed', 'detailed'),
+    usageReport('report-old-early', olderStart, olderEnd, 'completed', { links: ['ai-usage-early.csv'], madeAt: `${olderEnd}T23:54:09Z` }),
+    usageReport('report-old', olderStart, olderEnd, 'completed', {
+      links: ['signed/ai-usage-old-1.csv', 'ai-usage-old-2.csv.gz'], madeAt: `${newerStart}T00:30:00Z`,
+    }),
+    usageReport('report-detailed', newerStart, today.toString(), 'completed', { type: 'detailed' }),
     usageReport('report-failed', newerStart, today.toString(), 'failed'),
     usageReport('report-yesterday', newerStart, yesterday, 'completed'),
+    usageReport('report-today', newerStart, today.toString(), 'completed', { links: ['ai-usage-today.csv'], madeAt: `${today}T00:13:51Z` }),
     usageReport('report-wide', olderStart, newerStart, 'completed'),
   ];
+  const oldReport = usageReports[2];
 
   const report = (link: string, extra: Record<string, unknown> = {}): Reply =>
     json({ download_links: [`${DOWNLOADS}/${link}`], report_start_day: reportFirstDay, report_end_day: reportLastDay, ...extra });
@@ -283,14 +301,14 @@ export async function startMockGitHub(certificate: string, privateKey: string): 
       }
       return json({ usage_report_exports: usageReports });
     }
-    if (route === `${reportsPath}/report-old`) return json(usageReports[1]);
+    if (route === `${reportsPath}/report-old`) return json(oldReport);
     const madeId = route.startsWith(`${reportsPath}/`) ? route.slice(reportsPath.length + 1) : '';
     const made = madeReports.get(madeId);
     if (made) {
       // GitHub is still making it the first time the script looks.
       return seen === 1
         ? json(usageReport(madeId, made.start, made.end, 'processing'))
-        : json(usageReport(madeId, made.start, made.end, 'completed', 'ai_credit', [made.link]));
+        : json(usageReport(madeId, made.start, made.end, 'completed', { links: settings.emptyReports ? [] : [made.link] }));
     }
 
     switch (route) {
@@ -447,6 +465,7 @@ export async function startMockGitHub(certificate: string, privateKey: string): 
       counts.clear();
       madeReports.clear();
       settings.rejectApiVersion = false;
+      settings.emptyReports = false;
     },
     reportFirstDay,
     reportLastDay,

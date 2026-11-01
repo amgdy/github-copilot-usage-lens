@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { msg, t } from '../../i18n';
 import type { RosterEntry, SaveResult } from '../../lib/analytics/settings';
-import { CollectionError, collectionLicenseParse, sourceComplete, type Collection } from '../../lib/collection';
+import { CollectionError, collectionLicenseParse, sourceComplete, usageReportState, type Collection, type CollectionSource } from '../../lib/collection';
 import { applyLicenseImport, classifyUpload, loginKey, parseLicenseFile, type LicenseKind, type LicenseParse, type RosterMode, type UploadKind } from '../../lib/licenses';
 
 /** Bytes read from the start of each file to sort it. More than 4 KB of text, so classifyUpload can tell a cut-off file. */
@@ -82,7 +82,7 @@ export interface CollectionFileResult {
   seats: number;
   /** The file has its end line, so the script finished. */
   complete: boolean;
-  /** Parts of the data that failed or came back only in part. */
+  /** Parts of the data that failed or came back only in part, apart from the months of usageWaiting and usageMissing. */
   problems: number;
   /** Why the file could not be read. Null when it was read. */
   error: string | null;
@@ -90,7 +90,13 @@ export interface CollectionFileResult {
   older: string[];
   /** Months of the AI usage report in the file that were loaded as the usage data. Empty when a CSV was used. */
   usageMonths: string[];
-  /** Months the script read that have no AI usage report in the file. Only set when usageMonths is not empty. */
+  /** Months whose AI usage report GitHub made without any usage, apart from usageOpenEmpty. Only set when usageMonths is not empty. */
+  usageEmpty: string[];
+  /** The month the script ran in, when its AI usage report has no usage yet. */
+  usageOpenEmpty: string | null;
+  /** Months whose AI usage report GitHub had not made in time. Only set when usageMonths is not empty. */
+  usageWaiting: string[];
+  /** Months the script read that have no AI usage report in the file for another reason. Only set when usageMonths is not empty. */
   usageMissing: string[];
   /** The file has an AI usage report, but a usage report CSV of the same batch was used instead. */
   usageNotUsed: boolean;
@@ -254,7 +260,7 @@ async function readNewestCollection<F extends UploadFile>(files: readonly F[], d
   const chosen = await newestCollection(files, dependencies.readHead);
   const older = files.filter((file) => file !== chosen).map((file) => file.name);
   const result: CollectionFileResult = {
-    name: chosen.name, records: 0, seats: 0, complete: false, problems: 0, error: null, older, usageMonths: [], usageMissing: [], usageNotUsed: false,
+    name: chosen.name, records: 0, seats: 0, complete: false, problems: 0, error: null, older, usageMonths: [], usageEmpty: [], usageOpenEmpty: null, usageWaiting: [], usageMissing: [], usageNotUsed: false,
   };
   try {
     return { result, collection: await dependencies.readCollection(chosen) };
@@ -276,14 +282,23 @@ function takeCollection<F extends UploadFile>(read: ReadCollectionFile, dependen
   result.records = collection.records;
   result.seats = seats?.seats.length ?? 0;
   result.complete = collection.complete;
-  result.problems = collection.sources.filter((source) => source.status === 'failed' || source.status === 'partial').length;
   const reportMonths = [...new Set(collection.usageReports.map((report) => report.month))];
   if (usageFromFile) {
     result.usageMonths = reportMonths;
-    result.usageMissing = collection.header.months.filter((month) => !reportMonths.includes(month));
+    const lists = { complete: result.usageEmpty, waiting: result.usageWaiting, missing: result.usageMissing };
+    for (const month of collection.header.months) {
+      if (!reportMonths.includes(month)) lists[usageReportState(collection.sources, month)].push(month);
+    }
+    // The script ends with the month it ran in, which may have no usage only because it has just started.
+    const openMonth = collection.header.months.at(-1);
+    if (openMonth !== undefined && result.usageEmpty.at(-1) === openMonth) result.usageOpenEmpty = result.usageEmpty.pop() ?? null;
   } else {
     result.usageNotUsed = reportMonths.length > 0;
   }
+  // The months without a report have their own line, so they are not counted again.
+  const toldMonths = new Set([...result.usageWaiting, ...result.usageMissing]);
+  const toldApart = (source: CollectionSource) => source.id === 'usage-report' && source.month !== undefined && toldMonths.has(source.month);
+  result.problems = collection.sources.filter((source) => (source.status === 'failed' || source.status === 'partial') && !toldApart(source)).length;
   // A seat list that came back only in part is still added, like a license file; it never removes seats.
   if (seats !== null && !sourceComplete(collection.sources, 'seats')) seats.problems.push(t('Some organizations did not give their seat list, so the list may be short.'));
   return { result, seats };

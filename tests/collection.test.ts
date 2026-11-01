@@ -12,8 +12,10 @@ import {
   readCollection,
   readHeadText,
   sourceComplete,
+  usageReportState,
   usersAtLimit,
 } from '../src/lib/collection';
+import { EMPTY_REPORT_MESSAGE, OLD_EMPTY_REPORT_MESSAGE } from '../src/lib/collection/types';
 import { buildStore } from '../src/lib/csv/ingest';
 import { END, budgetRecord, creditLine, header, recordLine, readLines, seatRecord, sourceLine, storedText, textOf, usageReportPart, type Line } from './collectionLines';
 import { makeCsv, type RowSpec } from './helpers';
@@ -142,6 +144,28 @@ describe('reading a GitHub data file', () => {
     expect(sourceComplete(collection.sources, 'audit-log')).toBe(false);
     expect(sourceComplete(collection.sources, 'ai-credit-usage', '2026-08')).toBe(true);
     expect(sourceComplete(collection.sources, 'ai-credit-usage', '2026-09')).toBe(false);
+  });
+
+  it('knows why the AI usage report of a month is not in the file', () => {
+    const failed = (month: string, message: string) => sourceLine('usage-report', 'failed', { month, records: 0, http: 0, message });
+    const collection = readLines([
+      header({ months: ['2026-06', '2026-07', '2026-08', '2026-09'] }),
+      sourceLine('usage-report', 'ok', { month: '2026-06', records: 0, message: EMPTY_REPORT_MESSAGE }),
+      // Older scripts marked a finished report without usage as failed.
+      failed('2026-07', OLD_EMPTY_REPORT_MESSAGE),
+      failed('2026-08', 'GitHub is still making the report. Run the script again in a few minutes. It uses the same report.'),
+      failed('2026-09', 'Not Found'),
+      END,
+    ]);
+    expect(collection.sources.map((source) => [source.month, source.status, source.message])).toEqual([
+      ['2026-06', 'ok', EMPTY_REPORT_MESSAGE],
+      ['2026-07', 'ok', EMPTY_REPORT_MESSAGE],
+      ['2026-08', 'failed', 'GitHub is still making the report. Run the script again in a few minutes. It uses the same report.'],
+      ['2026-09', 'failed', 'Not Found'],
+    ]);
+    expect(['2026-06', '2026-07', '2026-08', '2026-09', '2026-10'].map((month) => usageReportState(collection.sources, month))).toEqual([
+      'complete', 'complete', 'waiting', 'missing', 'missing',
+    ]);
   });
 
   it('adds up the activity of each user once per day', () => {

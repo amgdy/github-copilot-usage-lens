@@ -13,7 +13,7 @@ export function levelLabel(level: BudgetLevel): string {
   if (level === 'low') return t('Under {high}', { high: fmtPct(HALF_SHARE, 0) });
   if (level === 'half') return t('{low} to {high}', { low: fmtPct(HALF_SHARE, 0), high: fmtPct(NEAR_SHARE, 0) });
   if (level === 'near') return t('{low} to {high}', { low: fmtPct(NEAR_SHARE, 0), high: fmtPct(1, 0) });
-  return t('Used up');
+  return t('{value} or more', { value: fmtPct(1, 0) });
 }
 export const levelTone = (level: BudgetLevel): Tone => LEVEL_TONES[level];
 

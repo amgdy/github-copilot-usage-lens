@@ -3,57 +3,82 @@ import { BLANK } from '../types';
 import { daysInMonth, monthEndDay, monthStartDay } from '../utils/date';
 import type { BudgetMap } from './budgetMap';
 import { budgetLevel, collectionMonth, type BudgetLevel, type BudgetRow } from './budgets';
-import { limitIndex, resolveUserLimit, type UserLimitKind } from './limits';
+import { sourceComplete } from './derive';
+import { costCenterOf, limitIndex, resolveUserLimit, type ReplacedLimit, type UserLimitKind } from './limits';
 import type { Collection, GitHubBudget } from './types';
 
 /**
- * Every GitHub Copilot limit on one map, for the limit map of the Budgets page. At the top are the places with spending
- * limits on the amount billed: the enterprise (or the organization of an organization file), then cost centers,
- * organizations and repositories. Below, every user is in the group of the one limit that holds them: their own
- * budget, the limit for each user of their cost center, the limit for each user of the enterprise, or no limit. Each
- * user also knows the places whose spending limits count their usage, so the map can show the path GitHub checks.
+ * The limit map. The enterprise (or organization) limit is the frame around all spending. Inside it, each user sits in
+ * one lane: the spending limit GitHub checks for their billed usage. Each user also has one user limit of their own.
  */
 
-export type PlaceScope = 'enterprise' | 'organization' | 'cost_center' | 'repository';
+/** A cost center, an organization, only the top limit, or a spending limit the file cannot settle. */
+export type LaneKind = 'cost_center' | 'organization' | 'top' | 'unclear';
 
-/** A place with spending limits on the amount billed: the top, a cost center, an organization or a repository. */
-export interface LimitPlace {
-  scope: PlaceScope;
-  name: string;
-  /** The enterprise, or the organization of an organization file. */
-  top: boolean;
-  /** Spending limits on the amount billed, smallest first. */
-  limits: BudgetRow[];
-  /** The limit with the largest share used. */
-  gauge: BudgetRow;
-  /** Seats of an organization. Null when GitHub did not say, and for other scopes. */
-  seats: number | null;
-  /** The group of the users held to the limit for each user of the same cost center, else -1. */
-  group: number;
+/** Which limit a lane reaches first: its own spending limit or the top limit. */
+export type ReachedFirst = 'own' | 'top' | null;
+
+/** The default user limit of the people in a lane who have no individual limit. */
+export interface LaneDefault {
+  kind: 'cost-center' | 'everyone';
+  budget: GitHubBudget;
 }
 
-/** The users held to one limit. */
-export interface LimitGroup {
-  kind: UserLimitKind | 'none';
-  /** The cost center of a cost center group, else ''. */
+/** The users whose billed usage checks the same spending limit. */
+export interface LimitLane {
+  kind: LaneKind;
+  /** The cost center or organization, else ''. */
   name: string;
-  /** The limit for each user of the group: the cost center's or the enterprise's. Null for own budgets and no limit. */
-  perUser: GitHubBudget | null;
+  /** Its own spending limits on the amount billed, smallest first. Empty when it has none. */
+  limits: BudgetRow[];
+  /** Its limit reached first: the least room left, else the smallest. Null without limits of its own. */
+  gauge: BudgetRow | null;
+  /** The smallest of its own limits: the most it can be billed. Null without limits of its own. */
+  capacity: number | null;
+  /** Amount left before a spending limit is reached: its own or the top's, the smaller one. Null when not known. */
+  room: number | null;
+  reachedFirst: ReachedFirst;
+  /**
+   * The top limit counts the billed usage of this lane. False for a cost center in an organization file: GitHub bills
+   * its members to the cost center of the enterprise, so the organization limit does not count them.
+   */
+  countedByTop: boolean;
+  perUser: LaneDefault | null;
   /** The cost center may use only the included credits of its own members. */
   poolCapped: boolean;
-  /** The place of the cost center, when it has spending limits too, else -1. */
-  place: number;
+  /** Seats of an organization. Null when GitHub did not say, and for other lanes. */
+  seats: number | null;
   /** Its users, the fullest first. */
   members: number[];
   usedUp: number;
 }
 
+/** The enterprise, or the organization of an organization file: the frame around all other limits. */
+export interface LimitTop {
+  scope: 'enterprise' | 'organization';
+  name: string;
+  /** Spending limits on the amount billed, smallest first. */
+  limits: BudgetRow[];
+  /** The limit reached first. Null when there is no top limit. */
+  wall: BudgetRow | null;
+  room: number | null;
+  /** The smallest top limit: the most all users together can be billed. */
+  capacity: number | null;
+  /** The capacity of every lane it counts with a limit of its own, added up. */
+  inside: number;
+  /** Inside ÷ capacity. Null without a top limit. */
+  insideShare: number | null;
+  /** The budgets were read in full, so a missing top limit means none is set. */
+  known: boolean;
+}
+
 export interface LimitUser {
   login: string;
   kind: UserLimitKind | 'none';
-  group: number;
+  lane: number;
   costCenter: string | null;
-  organization: string | null;
+  /** The organizations of the user's seats. */
+  organizations: string[];
   /** The amount of the limit (USD). Null when no limit holds the user. */
   limit: number | null;
   /** The amount used this month: what GitHub showed, or else the usage in the report. */
@@ -61,19 +86,19 @@ export interface LimitUser {
   usedFrom: 'github' | 'report';
   share: number | null;
   level: BudgetLevel | null;
-  /** Places under the top whose spending limits count usage of this user: their cost center, organizations and repositories. */
-  places: number[];
+  /** Broader per-user limits replaced by the effective limit, not shared spending budgets. */
+  replaces: ReplacedLimit[];
+  /** Independent of whether the user has an individual limit. */
+  poolCapped: boolean;
 }
 
 export interface LimitBoard {
-  topName: string;
-  topScope: 'enterprise' | 'organization';
-  /** The place of the enterprise or organization, else -1 when it has no spending limit. */
-  top: number;
-  /** The top first, then cost centers, organizations and repositories as the budget map orders them. Only places with spending limits. */
-  places: LimitPlace[];
-  /** Own budgets, then cost centers A to Z, then the limit for each user, then no limit: the order GitHub checks. */
-  groups: LimitGroup[];
+  top: LimitTop;
+  /**
+   * Cost centers, then organizations with a spending limit, then only the top limit, then not clear. Lanes the top
+   * limit does not count come last. Repository budgets stay in the budget table.
+   */
+  lanes: LimitLane[];
   users: LimitUser[];
   /** The limit for each user of the enterprise or organization. Null when none is set. */
   everyone: GitHubBudget | null;
@@ -86,22 +111,39 @@ export interface LimitBoard {
   held: BudgetMap['held'];
 }
 
-/** The row with the largest share used, the smallest amount first on a tie. */
-function gaugeOf(limits: BudgetRow[]): BudgetRow | null {
+/** Amount left before a spending limit is reached. Null when GitHub gave no amount used. */
+export const roomOf = (row: BudgetRow): number | null => (row.budget.consumed === null ? null : row.budget.amount - row.budget.consumed);
+
+/** The limit reached first: the least room left, the smaller amount on a tie. Without amounts used, the smallest. */
+function bindingOf(limits: BudgetRow[]): BudgetRow | null {
   let best: BudgetRow | null = null;
-  for (const row of limits) if (best === null || (row.share ?? -1) > (best.share ?? -1)) best = row;
-  return best;
+  let bestRoom = Number.POSITIVE_INFINITY;
+  for (const row of limits) {
+    const room = roomOf(row);
+    if (room === null) continue;
+    if (best === null || room < bestRoom || (room === bestRoom && row.budget.amount < best.budget.amount)) {
+      best = row;
+      bestRoom = room;
+    }
+  }
+  return best ?? limits.reduce<BudgetRow | null>((smallest, row) => (smallest === null || row.budget.amount < smallest.budget.amount ? row : smallest), null);
+}
+
+/** The lowest room left wins: a lane stops at its own limit or at the top limit, whichever has less room. */
+function laneRoom(own: BudgetRow | null, topRoom: number | null): { room: number | null; reachedFirst: ReachedFirst } {
+  if (own !== null) {
+    const ownRoom = roomOf(own);
+    if (ownRoom === null) return { room: null, reachedFirst: null };
+    return topRoom !== null && topRoom < ownRoom ? { room: topRoom, reachedFirst: 'top' } : { room: ownRoom, reachedFirst: 'own' };
+  }
+  return topRoom !== null ? { room: topRoom, reachedFirst: 'top' } : { room: null, reachedFirst: null };
 }
 
 interface MonthEntry {
   login: string;
   daily: Float64Array;
-  /** The latest cost center and organization in the report. */
+  /** The latest cost center in the report. */
   costCenter: string | undefined;
-  organization: string | undefined;
-  /** Every organization and repository with usage of the user this month, in lower case. */
-  organizations: Set<string>;
-  repositories: Set<string>;
 }
 
 interface MonthRows {
@@ -132,21 +174,13 @@ function monthRows(collection: Collection, store: DataStore): MonthRows {
         login: users[store.user[i]],
         daily: new Float64Array(lastDay),
         costCenter: undefined,
-        organization: undefined,
-        organizations: new Set<string>(),
-        repositories: new Set<string>(),
       };
       byLogin.set(key, entry);
     }
     entry.daily[day - start] += store.gross[i];
-    const organization = store.dicts.org.values[store.org[i]];
-    const repository = store.dicts.repo.values[store.repo[i]];
-    if (organization !== undefined && organization !== BLANK) entry.organizations.add(organization.toLowerCase());
-    if (repository !== undefined && repository !== BLANK) entry.repositories.add(repository.toLowerCase());
     if (day >= (latest.get(key) ?? -1)) {
       const costCenter = store.dicts.costCenter.values[store.costCenter[i]];
       if (costCenter !== undefined && costCenter !== BLANK) entry.costCenter = costCenter;
-      if (organization !== undefined && organization !== BLANK) entry.organization = organization;
       latest.set(key, day);
     }
   }
@@ -181,6 +215,8 @@ function seatCountsOf(collection: Collection, seatOrganizations: Map<string, str
 const byShare = (users: LimitUser[]) => (a: number, b: number): number =>
   (users[b].share ?? -1) - (users[a].share ?? -1) || users[b].used - users[a].used || users[a].login.localeCompare(users[b].login);
 
+const LANE_RANK: Record<LaneKind, number> = { cost_center: 0, organization: 1, top: 2, unclear: 3 };
+
 /** Builds the limit map for the month of the data. The filters of the report do not change it. */
 export function limitBoard(collection: Collection, store: DataStore, map: BudgetMap): LimitBoard {
   const index = limitIndex(collection);
@@ -189,6 +225,7 @@ export function limitBoard(collection: Collection, store: DataStore, map: Budget
   const month = monthRows(collection, store);
   const monthIndex = collectionMonth(collection);
   const collectedDay = Number(collection.header.day.slice(8, 10));
+  const enterprise = map.top.scope === 'enterprise';
 
   // Every user who used something this month or whom GitHub listed against a limit, as in the budget map.
   const logins = new Map<string, string>();
@@ -196,33 +233,55 @@ export function limitBoard(collection: Collection, store: DataStore, map: Budget
   for (const state of collection.budgetUsers) if (!logins.has(state.login.toLowerCase())) logins.set(state.login.toLowerCase(), state.login);
   for (const [key, budget] of index.own) if (!logins.has(key)) logins.set(key, budget.user ?? budget.entity);
 
-  // The places: the top first, then cost centers, organizations and repositories as the map orders them.
-  const places: LimitPlace[] = [];
-  const topGauge = gaugeOf(map.top.limits);
-  if (topGauge !== null) {
-    const seats = map.top.scope === 'organization' ? (seatCounts.get(map.top.name.toLowerCase()) ?? null) : null;
-    places.push({ scope: map.top.scope, name: map.top.name, top: true, limits: map.top.limits, gauge: topGauge, seats, group: -1 });
+  const wall = bindingOf(map.top.limits);
+  const topRoom = wall === null ? null : roomOf(wall);
+  const everyoneDefault: LaneDefault | null = map.everyone !== null ? { kind: 'everyone', budget: map.everyone.budget } : null;
+  const cappedCenters = new Set(collection.costCenters.filter((center) => center.poolCapped).map((center) => center.name.toLowerCase()));
+  const roomsByKey = new Map(map.rooms.map((room) => [`${room.scope}|${room.name.toLowerCase()}`, room]));
+
+  const laneByKey = new Map<string, LimitLane>();
+  const laneOf = (key: string, kind: LaneKind, name: string, limits: BudgetRow[], perUser: LaneDefault | null, poolCapped: boolean, seats: number | null, countedByTop = true): LimitLane => {
+    let lane = laneByKey.get(key);
+    if (lane === undefined) {
+      const gauge = bindingOf(limits);
+      const room = kind === 'unclear' ? { room: null, reachedFirst: null } : laneRoom(gauge, countedByTop ? topRoom : null);
+      // Limits are sorted smallest first, so the first one is the most the lane can be billed.
+      lane = { kind, name, limits, gauge, capacity: limits[0]?.budget.amount ?? null, ...room, countedByTop, perUser, poolCapped, seats, members: [], usedUp: 0 };
+      laneByKey.set(key, lane);
+    }
+    return lane;
+  };
+  const costCenterLane = (name: string): LimitLane => {
+    const key = `cost_center|${name.toLowerCase()}`;
+    const room = roomsByKey.get(key);
+    const perUser: LaneDefault | null = room?.perUser ? { kind: 'cost-center', budget: room.perUser.budget } : everyoneDefault;
+    return laneOf(key, 'cost_center', room?.name ?? name, room?.limits ?? [], perUser, room?.poolCapped || cappedCenters.has(name.toLowerCase()), null, enterprise);
+  };
+  const organizationLane = (name: string): LimitLane => {
+    const key = `organization|${name.toLowerCase()}`;
+    const room = roomsByKey.get(key);
+    return laneOf(key, 'organization', room?.name ?? name, room?.limits ?? [], everyoneDefault, false, seatCounts.get(name.toLowerCase()) ?? null);
+  };
+  const topLane = () => laneOf('top', 'top', '', [], everyoneDefault, false, null);
+  const unclearLane = () => laneOf('unclear', 'unclear', '', [], everyoneDefault, false, null);
+
+  // Every spending limit inside the frame gets a lane, even with no users this month.
+  const organizationsWithLimit = new Set<string>();
+  if (enterprise) {
+    for (const room of map.rooms) {
+      if (room.limits.length === 0) continue;
+      if (room.scope === 'cost_center') costCenterLane(room.name);
+      if (room.scope === 'organization') {
+        organizationLane(room.name);
+        organizationsWithLimit.add(room.name.toLowerCase());
+      }
+    }
   }
-  for (const room of map.rooms) {
-    const gauge = gaugeOf(room.limits);
-    if (gauge === null) continue;
-    const seats = room.scope === 'organization' ? (seatCounts.get(room.name.toLowerCase()) ?? null) : null;
-    places.push({ scope: room.scope, name: room.name, top: false, limits: room.limits, gauge, seats, group: -1 });
-  }
-  const placeOf = new Map<string, number>();
-  places.forEach((place, placeIndex) => {
-    if (place.top) return;
-    const name = place.name.toLowerCase();
-    placeOf.set(`${place.scope}|${name}`, placeIndex);
-    // A repository budget can name "org/app"; the report can name the repository "app".
-    if (place.scope === 'repository' && name.includes('/')) placeOf.set(`repository|${name.slice(name.indexOf('/') + 1)}`, placeIndex);
-  });
 
   const users: LimitUser[] = [];
+  const lanesOfUsers: LimitLane[] = [];
   const dailyOf: Float64Array[] = [];
   const held: BudgetMap['held'] = { own: 0, 'cost-center': 0, everyone: 0, none: 0 };
-  /** The cost center of each user held to a cost center limit, and that limit. */
-  const costCenterOf = new Map<number, { name: string; perUser: GitHubBudget }>();
   for (const [key, login] of logins) {
     const report = month.byLogin.get(key);
     const limit = resolveUserLimit(collection, index, login, report?.costCenter);
@@ -230,75 +289,63 @@ export function limitBoard(collection: Collection, store: DataStore, map: Budget
     const used = limit?.githubUsed ?? reportUsed;
     const share = limit !== null && limit.amount > 0 ? used / limit.amount : null;
     const kind = limit?.kind ?? 'none';
-    const costCenter = limit?.costCenter?.name ?? report?.costCenter ?? null;
+    const organizations = seatOrganizations.get(key) ?? [];
+    const costCenter = costCenterOf(collection, index, login, report?.costCenter)?.name ?? null;
     held[kind]++;
-    if (kind === 'cost-center' && limit !== null) costCenterOf.set(users.length, { name: limit.budget.entity, perUser: limit.budget });
 
-    const userPlaces = new Set<number>();
-    const addPlace = (scope: PlaceScope, name: string) => {
-      const found = placeOf.get(`${scope}|${name.toLowerCase()}`);
-      if (found !== undefined) userPlaces.add(found);
-    };
-    if (costCenter !== null) addPlace('cost_center', costCenter);
-    for (const organization of seatOrganizations.get(key) ?? []) addPlace('organization', organization);
-    for (const organization of report?.organizations ?? []) addPlace('organization', organization);
-    for (const repository of report?.repositories ?? []) addPlace('repository', repository);
+    // GitHub checks the cost center's spending limit, else the seat organization's, else only the top limit. With
+    // seats in several organizations, GitHub picks one each billing cycle, so the file cannot say which. Cost centers
+    // belong to the enterprise: in an organization file, their members sit outside the organization limit.
+    let lane: LimitLane;
+    if (costCenter !== null) lane = costCenterLane(costCenter);
+    else if (!enterprise) lane = topLane();
+    else {
+      const withLimit = organizations.filter((name) => organizationsWithLimit.has(name.toLowerCase()));
+      if (organizationsWithLimit.size === 0 || (organizations.length > 0 && withLimit.length === 0)) lane = topLane();
+      else if (organizations.length === 1) lane = organizationLane(organizations[0]);
+      else lane = unclearLane();
+    }
+    lanesOfUsers.push(lane);
 
     users.push({
       login,
       kind,
-      group: -1,
+      lane: -1,
       costCenter,
-      organization: seatOrganizations.get(key)?.[0] ?? report?.organization ?? null,
+      organizations,
       limit: limit?.amount ?? null,
       used,
       usedFrom: limit !== null && limit.githubUsed !== null ? 'github' : 'report',
       share,
-      level: share === null ? null : budgetLevel(share),
-      places: [...userPlaces].sort((a, b) => a - b),
+      level: limit?.amount === 0 ? 'used-up' : share === null ? null : budgetLevel(share),
+      replaces: limit?.replaces ?? [],
+      poolCapped: costCenter !== null && cappedCenters.has(costCenter.toLowerCase()),
     });
     dailyOf.push(report?.daily ?? new Float64Array(month.lastDay));
   }
 
-  // The groups, in the order GitHub checks the limits of a user: own budget, cost center, limit for each user, none.
-  const groups: LimitGroup[] = [];
-  const newGroup = (kind: LimitGroup['kind'], name: string, perUser: GitHubBudget | null, poolCapped = false): LimitGroup => ({ kind, name, perUser, poolCapped, place: -1, members: [], usedUp: 0 });
-  if (held.own > 0) groups.push(newGroup('own', '', null));
-  const costCenterGroups = new Map<string, LimitGroup>();
-  for (const room of map.rooms) {
-    if (room.scope !== 'cost_center' || room.perUser === null) continue;
-    costCenterGroups.set(room.name.toLowerCase(), newGroup('cost-center', room.name, room.perUser.budget, room.poolCapped));
-  }
-  // A cost center limit GitHub applies but the map left out still gets a group, so every user has a place.
-  for (const found of costCenterOf.values()) {
-    if (!costCenterGroups.has(found.name.toLowerCase())) costCenterGroups.set(found.name.toLowerCase(), newGroup('cost-center', found.name, found.perUser));
-  }
-  groups.push(...[...costCenterGroups.values()].sort((a, b) => a.name.localeCompare(b.name)));
-  if (map.everyone !== null || held.everyone > 0) groups.push(newGroup('everyone', '', map.everyone?.budget ?? null));
-  if (held.none > 0) groups.push(newGroup('none', '', null));
-
-  const groupOfKind = new Map(groups.filter((group) => group.kind !== 'cost-center').map((group) => [group.kind, groups.indexOf(group)]));
-  const groupOfCostCenter = new Map(groups.flatMap((group, groupIndex) => (group.kind === 'cost-center' ? [[group.name.toLowerCase(), groupIndex] as const] : [])));
+  const fullness = (lane: LimitLane): number => lane.gauge?.share ?? -1;
+  const lanes = [...laneByKey.values()].sort(
+    (a, b) =>
+      Number(b.countedByTop) - Number(a.countedByTop) ||
+      LANE_RANK[a.kind] - LANE_RANK[b.kind] ||
+      b.limits.length - a.limits.length ||
+      fullness(b) - fullness(a) ||
+      a.name.localeCompare(b.name),
+  );
+  const laneIndex = new Map(lanes.map((lane, position) => [lane, position]));
   users.forEach((user, userIndex) => {
-    const costCenter = costCenterOf.get(userIndex);
-    user.group = costCenter !== undefined ? (groupOfCostCenter.get(costCenter.name.toLowerCase()) ?? -1) : (groupOfKind.get(user.kind) ?? -1);
-    groups[user.group]?.members.push(userIndex);
+    user.lane = laneIndex.get(lanesOfUsers[userIndex]) ?? -1;
+    lanes[user.lane]?.members.push(userIndex);
   });
   const fullestFirst = byShare(users);
-  for (const group of groups) {
-    group.members.sort(fullestFirst);
-    group.usedUp = group.members.filter((userIndex) => users[userIndex].level === 'used-up').length;
+  for (const lane of lanes) {
+    lane.members.sort(fullestFirst);
+    lane.usedUp = lane.members.filter((userIndex) => users[userIndex].level === 'used-up').length;
   }
 
-  // A cost center with a limit for each user and spending limits of its own: the group and the place point at each other.
-  places.forEach((place, placeIndex) => {
-    if (place.scope !== 'cost_center') return;
-    const groupIndex = groupOfCostCenter.get(place.name.toLowerCase());
-    if (groupIndex === undefined) return;
-    place.group = groupIndex;
-    groups[groupIndex].place = placeIndex;
-  });
-
+  const capacity = map.top.limits[0]?.budget.amount ?? null;
+  const inside = lanes.reduce((total, lane) => total + (lane.countedByTop ? (lane.capacity ?? 0) : 0), 0);
   const cumulative = new Float32Array(users.length * month.lastDay);
   dailyOf.forEach((daily, userIndex) => {
     let total = 0;
@@ -306,11 +353,18 @@ export function limitBoard(collection: Collection, store: DataStore, map: Budget
   });
 
   return {
-    topName: map.top.name,
-    topScope: map.top.scope,
-    top: places.findIndex((place) => place.top),
-    places,
-    groups,
+    top: {
+      scope: map.top.scope,
+      name: map.top.name,
+      limits: map.top.limits,
+      wall,
+      room: topRoom,
+      capacity,
+      inside,
+      insideShare: capacity !== null && capacity > 0 ? inside / capacity : null,
+      known: sourceComplete(collection.sources, 'budgets'),
+    },
+    lanes,
     users,
     everyone: map.everyone?.budget ?? null,
     costCentersWithoutLimit: map.roomsWithoutLimit,
@@ -333,45 +387,24 @@ export function shareOnDay(board: LimitBoard, userIndex: number, day: number): n
   return usedOnDay(board, userIndex, day) / user.limit;
 }
 
-/** What is selected on the map. */
-export type LimitTarget = { kind: 'all' } | { kind: 'place' | 'group' | 'user'; index: number };
+/** What is selected on the map: everything, the frame, one lane or one user. */
+export type LimitTarget = { kind: 'all' | 'top' } | { kind: 'lane' | 'user'; index: number };
 
-/** What a selection holds and what holds it. Everything else on the map is dimmed. */
+/** The lanes and users a selection holds. Other users are faded. */
 export interface LimitFocus {
-  places: Set<number>;
-  groups: Set<number>;
+  lanes: Set<number>;
   users: Set<number>;
 }
 
-/**
- * The parts of the map that belong to a selection. A user brings their group and every place whose spending limits
- * count their usage. A group brings its users, the place of its cost center and every place that counts its users. A
- * it counts and their groups. Null for the whole picture and the top, which count everyone.
- */
+/** A user sits in one lane. A lane holds its members. The frame and the whole picture fade nobody. */
 export function limitFocus(board: LimitBoard, target: LimitTarget): LimitFocus | null {
-  const withTop = (places: Iterable<number>): Set<number> => new Set([...places, ...(board.top >= 0 ? [board.top] : [])]);
   if (target.kind === 'user') {
     const user = board.users[target.index];
-    if (user === undefined) return null;
-    return { places: withTop(user.places), groups: new Set([user.group]), users: new Set([target.index]) };
+    return user === undefined ? null : { lanes: new Set([user.lane]), users: new Set([target.index]) };
   }
-  if (target.kind === 'group') {
-    const group = board.groups[target.index];
-    if (group === undefined) return null;
-    const places = new Set(group.place >= 0 ? [group.place] : []);
-    for (const userIndex of group.members) for (const placeIndex of board.users[userIndex].places) places.add(placeIndex);
-    return { places: withTop(places), groups: new Set([target.index]), users: new Set(group.members) };
-  }
-  if (target.kind === 'place') {
-    const place = board.places[target.index];
-    if (place === undefined || place.top) return null;
-    const users = new Set<number>();
-    board.users.forEach((user, userIndex) => {
-      if (user.places.includes(target.index)) users.add(userIndex);
-    });
-    const groups = new Set([...users].map((userIndex) => board.users[userIndex].group));
-    if (place.group >= 0) groups.add(place.group);
-    return { places: withTop([target.index]), groups, users };
+  if (target.kind === 'lane') {
+    const lane = board.lanes[target.index];
+    return lane === undefined ? null : { lanes: new Set([target.index]), users: new Set(lane.members) };
   }
   return null;
 }

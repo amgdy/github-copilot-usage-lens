@@ -183,9 +183,10 @@ audit-log         Seat, plan, policy and budget changes                      own
 For organizations, the billing sources need an organization owner or billing manager. The activity sources need the
 usage metrics policy for GitHub Copilot set to "Enabled everywhere".
 
-usage-report uses a report from the last 31 days when one covers the month. Otherwise it asks GitHub to make one,
-which takes a few minutes and adds the report to the billing page. GitHub makes one report at a time, so the script
-asks for the next month when the one before is ready. It changes no settings.
+usage-report uses a report from the last 31 days when it covers the month and GitHub made it after the month ended.
+Otherwise it asks GitHub to make one, which takes a few minutes and adds the report to the billing page. For the month
+the script runs in, it asks for a new one unless GitHub is still making one. GitHub makes one report at a time, so the
+script asks for the next month when the one before is ready. It changes no settings.
 EOF
 }
 
@@ -899,9 +900,9 @@ AUDIT_FILTER='.[] | ((if (.data | type) == "object" then .data else {} end) + .)
 
 TEAMS_FILTER='.[] | ({slug, name} | wrap("team")), "#team \(.slug)"'
 
-# One line per AI usage report on the billing page: id, first day, last day and status.
+# One line per AI usage report on the billing page: id, first day, last day, status and when GitHub made it.
 REPORT_LIST_FILTER='(.usage_report_exports // [])[] | select(.report_type == "ai_credit")
-  | "#report \(.id)\t\((.start_date // "")[0:10])\t\((.end_date // "")[0:10])\t\(.status // "")"'
+  | "#report \(.id)\t\((.start_date // "")[0:10])\t\((.end_date // "")[0:10])\t\(.status // "")\t\(.created_at // "")"'
 
 REPORT_STATUS_FILTER='"#status \(.status // "")", ((.download_urls // [])[])'
 
@@ -1216,13 +1217,16 @@ request_usage_reports() {
   control_lines "$work/report-list" report >"$work/report-list.tsv"
   for month in $month_keys; do
     month_days "$month"
-    # A finished report first, then one GitHub is still making. It must cover the whole month and no other month.
-    found=$(awk -F '\t' -v first="$month_first" -v last="$month_last" -v month_end="$month_end" '
+    # It must cover the whole month and no other month. A finished report has all the usage only when GitHub made it
+    # after the last day, so the newest of those is used. This month is not over, so its finished reports are never
+    # used; one that GitHub is still making is, so a run that stopped waiting for it can be repeated.
+    found=$(awk -F '\t' -v first="$month_first" -v last="$month_last" -v month_end="$month_end" -v today="$today" '
       $2 == first && ($3 "") >= last && ($3 "") <= month_end {
-        if ($4 == "completed") { print $1; done = 1; exit }
-        if ($4 == "processing" && pick == "") pick = $1
+        made_after = substr($5, 1, 10) > ($3 "")
+        if ($4 == "completed" && made_after && ($5 "") > newest) { newest = $5; finished = $1 }
+        if ($4 == "processing" && (made_after || last == today) && making == "") making = $1
       }
-      END { if (!done && pick != "") print pick }
+      END { if (finished != "") print finished; else if (making != "") print making }
     ' "$work/report-list.tsv")
     case "$found" in
       "" | *[!A-Za-z0-9-]*) ;;
@@ -1278,8 +1282,10 @@ download_usage_report() {
   : >"$work/usage-chunks"
   grep '^https://' "$work/report" >"$work/links"
   if [ ! -s "$work/links" ]; then
-    add_status usage-report failed 0 0 "GitHub gave no file for this report." "$endpoint"
-    return 1
+    # GitHub makes no file for a finished report without usage, for example when the month has just started.
+    add_status usage-report ok 0 200 "GitHub made the report, but it has no usage for these days." "$endpoint"
+    usage_report_months=$((usage_report_months + 1))
+    return 0
   fi
   while IFS= read -r link <&3; do
     file_number=$((file_number + 1))

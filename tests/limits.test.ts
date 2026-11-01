@@ -92,6 +92,25 @@ describe('the limit of a user', () => {
     expect(limitOf(collection, 'twoteams', 'Data')!.kind).toBe('cost-center');
   });
 
+  it('does not let the seat organization decide when teams point to different cost centers', () => {
+    const collection = collectionOf([
+      everyone(30),
+      forCostCenter('mobile-limit', 'Mobile', 50),
+      forCostCenter('data-limit', 'Data', 60),
+      forCostCenter('org-limit', 'Org', 90),
+      costCenter('Mobile', [{ type: 'EnterpriseTeam', name: 'Platform' }]),
+      costCenter('Data', [{ type: 'EnterpriseTeam', name: 'Analysts' }]),
+      costCenter('Org', [{ type: 'Org', name: 'octo-org' }]),
+      recordLine('team', { slug: 'ent:platform', name: 'Platform' }),
+      recordLine('team', { slug: 'ent:analysts', name: 'Analysts' }),
+      recordLine('team-member', { login: 'twoteams' }, { parent: 'ent:platform' }),
+      recordLine('team-member', { login: 'twoteams' }, { parent: 'ent:analysts' }),
+      recordLine('seat', seatRecord('twoteams', 'octo-org', 'business')),
+    ]);
+    expect(limitOf(collection, 'twoteams')).toMatchObject({ kind: 'everyone', costCenter: null });
+    expect(limitOf(collection, 'twoteams', 'Data')).toMatchObject({ kind: 'cost-center', amount: 60, costCenter: { name: 'Data', source: 'report' } });
+  });
+
   it('keeps a user GitHub listed under the limit for each user there, whatever the cost center', () => {
     const collection = collectionOf([everyone(30), forCostCenter('mobile-limit', 'Mobile', 50), costCenter('Mobile', [{ type: 'User', name: 'mona' }]), listed('everyone', 'mona', 5, 30)]);
     expect(limitOf(collection, 'mona')).toMatchObject({ kind: 'everyone', amount: 30, githubUsed: 5 });

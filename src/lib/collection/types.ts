@@ -8,6 +8,18 @@ export type CollectionScope = 'enterprise' | 'organization';
 
 export type SourceStatus = 'ok' | 'partial' | 'failed' | 'skipped';
 
+/**
+ * What the scripts say about a finished AI usage report without a file. GitHub makes no file when the report has no
+ * usage, for example when the month has just started. The source line says ok with 0 records.
+ */
+export const EMPTY_REPORT_MESSAGE = 'GitHub made the report, but it has no usage for these days.';
+
+/** What scripts before EMPTY_REPORT_MESSAGE said about the same report. They called it failed. */
+export const OLD_EMPTY_REPORT_MESSAGE = 'GitHub gave no file for this report.';
+
+/** How the scripts' messages start when GitHub had not made the AI usage report of a month in time. */
+export const REPORT_WAITING_MESSAGES = ['GitHub is still making the report.', 'GitHub makes one report at a time'] as const;
+
 /** The first line of the file: who collected what, and when. */
 export interface CollectionHeader {
   /** The script that wrote the file, for example "collect.sh". */

@@ -179,6 +179,10 @@ export function costCenterOf(collection: Collection, index: LimitIndex, login: s
     const names = slugs.flatMap((slug) => (collection.teams[slug] !== undefined ? [slug, collection.teams[slug]] : [slug]));
     const team = onlyCostCenter(names, index.byTeam);
     if (team !== null) return { name: team.name, source: 'team', through: collection.teams[team.through] ?? team.through };
+    // Teams in different cost centers outrank the organization, so the organization must not decide.
+    if (names.some((name) => index.byTeam.has(lower(name)))) {
+      return reportCostCenter !== undefined && reportCostCenter !== '' ? { name: reportCostCenter, source: 'report' } : null;
+    }
   }
   const organizations = index.seatOrganizations.get(key) ?? [];
   const organization = onlyCostCenter(organizations, index.byOrganization);

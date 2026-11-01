@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { RosterEntry, SaveResult } from '../src/lib/analytics/settings';
 import { readCollection, type Collection } from '../src/lib/collection';
+import { EMPTY_REPORT_MESSAGE, OLD_EMPTY_REPORT_MESSAGE } from '../src/lib/collection/types';
 import { classifyUpload } from '../src/lib/licenses';
 import { rosterKind } from '../src/pages/data/LicenseCard';
 import {
@@ -310,7 +311,7 @@ describe('routeUploads with a GitHub data file', () => {
     expect(calls.reports).toEqual([['ai-usage-report-2026-09.csv']]);
     expect(calls.errors).toHaveLength(0);
     expect(calls.collections).toHaveLength(1);
-    expect(out.notice?.collection).toMatchObject({ usageMonths: ['2026-09'], usageMissing: ['2026-08'], usageNotUsed: false });
+    expect(out.notice?.collection).toMatchObject({ usageMonths: ['2026-09'], usageMissing: ['2026-08'], usageNotUsed: false, problems: 0 });
     expect(calls.saved.at(-1)?.roster.map((rosterEntry) => rosterEntry.user)).toEqual(['user-a']);
   });
 
@@ -320,6 +321,42 @@ describe('routeUploads with a GitHub data file', () => {
     expect(calls.loaded).toEqual([['usage.csv']]);
     expect(calls.reports).toHaveLength(0);
     expect(out.notice?.collection).toMatchObject({ usageMonths: [], usageMissing: [], usageNotUsed: true });
+  });
+
+  it('says why each month has no AI usage report and counts each problem once', async () => {
+    const { d: dependencies } = fakeDependencies();
+    const lines = USAGE.trimEnd().split('\n');
+    const failed = (month: string, message: string) => sourceLine('usage-report', 'failed', { month, records: 0, http: 0, message });
+    const upload = file('usage-lens-data.ndjson', textOf([
+      header({ months: ['2026-06', '2026-07', '2026-08', '2026-09', '2026-10'] }),
+      sourceLine('usage-report', 'ok', { month: '2026-06', records: 0, message: EMPTY_REPORT_MESSAGE }),
+      failed('2026-07', 'Could not download the report file: timeout'),
+      failed('2026-08', 'GitHub makes one report at a time and had no time for this month. Run the script again in a few minutes.'),
+      usageReportPart('2026-09', 1, 1, lines),
+      sourceLine('usage-report', 'ok', { month: '2026-09', records: lines.length - 1 }),
+      // Older scripts marked a finished report without usage as failed.
+      failed('2026-10', OLD_EMPTY_REPORT_MESSAGE),
+      sourceLine('budgets', 'failed', { records: 0, http: 403 }),
+      END,
+    ]));
+    const out = await routeUploads([upload], dependencies);
+    expect(out.notice?.collection).toMatchObject({
+      usageMonths: ['2026-09'], usageEmpty: ['2026-06'], usageOpenEmpty: '2026-10', usageWaiting: ['2026-08'], usageMissing: ['2026-07'], problems: 1,
+    });
+  });
+
+  it('says a month without usage has no usage yet only when it is the month the script ran in', async () => {
+    const { d: dependencies } = fakeDependencies();
+    const lines = USAGE.trimEnd().split('\n');
+    const upload = file('usage-lens-data.ndjson', textOf([
+      header(),
+      sourceLine('usage-report', 'ok', { month: '2026-08', records: 0, message: EMPTY_REPORT_MESSAGE }),
+      usageReportPart('2026-09', 1, 1, lines),
+      sourceLine('usage-report', 'ok', { month: '2026-09', records: lines.length - 1 }),
+      END,
+    ]));
+    const out = await routeUploads([upload], dependencies);
+    expect(out.notice?.collection).toMatchObject({ usageEmpty: ['2026-08'], usageOpenEmpty: null, usageWaiting: [], usageMissing: [], problems: 0 });
   });
 
   it('keeps nothing from the GitHub data file when its AI usage report fails to load', async () => {

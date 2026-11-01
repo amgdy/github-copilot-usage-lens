@@ -66,7 +66,7 @@ const arabic: Dict = {
   'One bar for each budget of the enterprise, an organization, a cost center or a repository: the share of it used this month.':
     'عمود لكل ميزانية للمؤسسة الكبرى أو مؤسسة أو مركز تكلفة أو مستودع: الحصة المستخدمة منها هذا الشهر.',
   'Share used = amount used ÷ budget': 'الحصة المستخدمة = المبلغ المستخدَم ÷ الميزانية',
-  'Under 50%, 50% to 80%, 80% to 100% and Used up give the color of the bar.': 'أقل من 50%، ومن 50% إلى 80%، ومن 80% إلى 100%، ونفدت، تحدد لون العمود.',
+  'Under 50%, 50% to 80%, 80% to 100% and 100% or more give the color of the bar.': 'أقل من 50%، ومن 50% إلى 80%، ومن 80% إلى 100%، و100% أو أكثر، تحدد لون العمود.',
   'The dashed line is 100%.': 'الخط المتقطع هو 100%.',
   'Select a bar to open the Organization page filtered to that organization, cost center or repository.': 'اختر عمودًا لفتح صفحة المؤسسة مصفّاة على تلك المؤسسة أو مركز التكلفة أو المستودع.',
   'At most 30 budgets are drawn. The table at the bottom of the page lists every budget.': 'تُرسم 30 ميزانية على الأكثر. يعرض الجدول أسفل الصفحة كل الميزانيات.',
@@ -98,29 +98,41 @@ const arabic: Dict = {
   'The limit for each user is $30. A user who used $12 is at 40%, under 50%.': 'الحد لكل مستخدم $30. المستخدم الذي استخدم $12 عند 40%، أي أقل من 50%.',
 
   // Limit map
-  'Every AI credit limit for GitHub Copilot on one map, read from the bottom up in the order GitHub checks them. At the bottom, each user is a small glass in the group of the one limit that holds them: their own budget, their cost center, the limit for each user, or no limit. Above them are the included credits, then the spending limits of cost centers, organizations and repositories, and the spending limit of the enterprise at the top. Each glass fills to the share used.':
-    'كل حدود أرصدة الذكاء الاصطناعي في GitHub Copilot على خريطة واحدة، تُقرأ من الأسفل إلى الأعلى بالترتيب الذي يفحصها به GitHub. في الأسفل، كل مستخدم كأس صغيرة في مجموعة الحد الوحيد الذي يخضع له: ميزانيته الخاصة، أو مركز التكلفة الخاص به، أو الحد لكل مستخدم، أو بلا حد. وفوقهم الأرصدة المشمولة، ثم حدود الإنفاق لمراكز التكلفة والمؤسسات والمستودعات، ثم حد الإنفاق للمؤسسة الكبرى في الأعلى. وكل كأس تمتلئ بقدر الحصة المستخدمة.',
-  'Limit of a user = own budget, else cost center limit, else limit for each user; fill of a glass = amount used ÷ limit':
-    'حد المستخدم = الميزانية الخاصة، وإلا حد مركز التكلفة، وإلا الحد لكل مستخدم؛ تعبئة الكأس = المبلغ المستخدَم ÷ الحد',
-  'Limits for users cap all AI credit usage of one user, included credits too, and always stop usage.':
-    'تحدّ حدود المستخدمين كل استخدام المستخدم لأرصدة الذكاء الاصطناعي، والأرصدة المشمولة أيضًا، وتوقف الاستخدام دائمًا.',
-  'Included credits pay for the usage while they last. Only the rest is billed.': 'تدفع الأرصدة المشمولة ثمن الاستخدام ما دامت متاحة. ولا يُفوتر إلا الباقي.',
-  'Spending limits (cost center, organization, repository, enterprise) cap the amount billed. They stop usage only when set to stop usage. A large glass fills to the share used of each spending limit, as GitHub showed it.':
-    'تحدّ حدود الإنفاق (مركز التكلفة، المؤسسة، المستودع، المؤسسة الكبرى) المبلغ المدفوع إضافيًا. ولا توقف الاستخدام إلا إذا ضُبطت لإيقافه. وتمتلئ الكأس الكبيرة بالحصة المستخدمة من كل حد إنفاق، كما أظهرها GitHub.',
-  'The cost center of a user comes from the list GitHub gave for the cost center limit, else the user, team or organization in the cost center, else the usage report. The organizations and repositories of a user come from their seats and from the usage report.':
-    'يُؤخذ مركز تكلفة المستخدم من القائمة التي أعطاها GitHub لحد مركز التكلفة، وإلا من المستخدم أو الفريق أو المؤسسة في مركز التكلفة، وإلا من تقرير الاستخدام. وتُؤخذ مؤسسات المستخدم ومستودعاته من مقاعده ومن تقرير الاستخدام.',
-  'Users held to a limit are users with usage in the month of the data or listed by GitHub. A user glass fills to the amount GitHub showed, or else the usage in the report, divided by their limit. Its color shows the level: under 50%, 50% to 80%, 80% to 100%, or used up. A user with no limit has an empty glass with a dashed line.':
-    'المستخدمون الخاضعون لحد هم من لهم استخدام في شهر البيانات أو أدرجهم GitHub. وتمتلئ كأس المستخدم بالمبلغ الذي أظهره GitHub، وإلا بالاستخدام في التقرير، مقسومًا على حده. ويدل لونها على المستوى: أقل من 50%، أو من 50% إلى 80%، أو من 80% إلى 100%، أو نفد. والمستخدم الذي لا حد له كأسه فارغة بخط متقطع.',
-  'Select a user, a group or a glass to see every limit that holds it. Each one gets the number of its step in the order GitHub checks them, the line between the steps moves up, and the rest fades. The side panel explains each step.':
-    'اختر مستخدمًا أو مجموعة أو كأسًا لترى كل حد يخضع له. يأخذ كل حد رقم خطوته بالترتيب الذي يفحصها به GitHub، ويتحرك الخط بين الخطوات إلى الأعلى، ويبهت الباقي. وتشرح اللوحة الجانبية كل خطوة.',
-  'Play the month to see the user glasses fill day by day. Each day uses the usage report, included credits too, because GitHub gives only the amount used so far. The large glasses keep what GitHub showed when the data was collected.':
-    'شغّل الشهر لترى كؤوس المستخدمين تمتلئ يومًا بعد يوم. يعتمد كل يوم على تقرير الاستخدام، مع الأرصدة المشمولة، لأن GitHub لا يعطي إلا المبلغ المستخدَم حتى الآن. وتبقى الكؤوس الكبيرة على ما أظهره GitHub عند جمع البيانات.',
-  'Own credit share means the cost center may use only the included credits of its own members.': '«حصة أرصدة خاصة» تعني أن مركز التكلفة يستخدم الأرصدة المشمولة لأعضائه فقط.',
-  'When a user is in teams or organizations of different cost centers, the data file does not say which one GitHub picked, so the usage report decides.':
-    'عندما يكون المستخدم في فرق أو مؤسسات تتبع مراكز تكلفة مختلفة، لا يذكر ملف البيانات أيها اختار GitHub، لذلك يحسم تقرير الاستخدام الأمر.',
+  'All GitHub Copilot AI credit limits in one picture. The outer frame is the limit on all spending of the enterprise or organization. Each row inside it is one spending limit with the people it holds. Each square is one person, filled to the share of their user limit used.':
+    'كل حدود أرصدة الذكاء الاصطناعي في GitHub Copilot في صورة واحدة. الإطار الخارجي هو حد الإنفاق كله للمؤسسة الكبرى أو المؤسسة. كل صف داخله حد إنفاق واحد مع الأشخاص الذين يضبطهم. وكل مربع شخص واحد، يمتلئ بقدر ما استخدم من حد المستخدم.',
+  'Room left in a row = the smaller of its own room and the room in the frame; square fill = amount used ÷ user limit; limits inside = sum of the row limits ÷ frame limit':
+    'المتبقي في صف = الأصغر بين المتبقي في حده والمتبقي في الإطار؛ امتلاء المربع = المبلغ المستخدَم ÷ حد المستخدم؛ الحدود الداخلية = مجموع حدود الصفوف ÷ حد الإطار',
+  'The frame is the enterprise limit, or the organization limit in an organization file. Its color follows how full it is. A dashed frame means no limit was found for all spending.':
+    'الإطار هو حد المؤسسة الكبرى، أو حد المؤسسة في ملف مؤسسة. يتبع لونه مدى امتلائه. والإطار المتقطع يعني أنه لم يُعثر على حد للإنفاق كله.',
+  'A user goes in one row: the cost center row when they are in a cost center, else the row of their only seat organization when it has a limit, else the row of users held only by the frame. Users with seats in several organizations, or no seat, go in a row of their own, because GitHub picks one organization each billing cycle.':
+    'يوضع كل مستخدم في صف واحد: صف مركز التكلفة إذا كان في مركز تكلفة، وإلا صف مؤسسة مقعده الوحيدة إذا كان لها حد، وإلا صف المستخدمين الذين لا يضبطهم إلا الإطار. ويوضع المستخدمون الذين لهم مقاعد في عدة مؤسسات، أو لا مقعد لهم، في صف خاص بهم، لأن GitHub يختار مؤسسة واحدة في كل دورة فوترة.',
+  'A row shows its own limit, the room left and the user limit of each person. When the frame has less room than the row, the frame is reached first and the row says so.':
+    'يعرض الصف حده والمتبقي فيه وحد المستخدم لكل شخص. وعندما يكون المتبقي في الإطار أقل من المتبقي في الصف، يُبلغ الإطار أولًا ويذكر الصف ذلك.',
+  'The strip under the frame adds up the row limits. When they add up to more than the frame, they cannot all be used in full.':
+    'يجمع الشريط تحت الإطار حدود الصفوف. وعندما يزيد مجموعها على حد الإطار، لا يمكن استخدامها كلها بالكامل.',
+  'In an organization file, users in a cost center of the enterprise go in a dashed box under the frame. GitHub bills their usage to the cost center, so the organization limit does not count it. The cost center limit is not in an organization file.':
+    'في ملف المؤسسة، يوضع المستخدمون الذين في مركز تكلفة للمؤسسة الكبرى في مربع متقطع تحت الإطار. يحمّل GitHub استخدامهم على مركز التكلفة، لذلك لا يحتسبه حد المؤسسة. وحد مركز التكلفة ليس في ملف المؤسسة.',
+  'The user limit is individual, else the cost center default, else the universal default. A broader user limit is replaced, not added. It counts included credits too and always stops usage. A zero limit blocks at once and is drawn full. A missing limit has a dashed square.':
+    'حد المستخدم هو الحد الفردي، وإلا حد مركز التكلفة الافتراضي، وإلا الحد العام الافتراضي. يُستبدل حد المستخدم الأوسع ولا يُضاف. ويحتسب الأرصدة المشمولة أيضًا ويوقف الاستخدام دائمًا. الحد الصفري يوقف الاستخدام فورًا ويُرسم ممتلئًا. والحد المفقود مربعه متقطع.',
+  'The square colors are the share of the user limit used: under 50%, 50% to 80%, 80% to 100% and 100% or more. The numbers in the legend are counts of users. A row also counts its users who reached their user limit, at 100% or more.':
+    'ألوان المربعات هي الحصة المستخدمة من حد المستخدم: أقل من 50%، ومن 50% إلى 80%، ومن 80% إلى 100%، و100% أو أكثر. والأرقام في وسيلة الإيضاح أعداد مستخدمين. ويعدّ كل صف أيضًا مستخدميه الذين بلغوا حد المستخدم، أي 100% أو أكثر.',
+  'Select the frame, a row or a square to see its limits on the side. Play the month to fill the squares day by day with reported usage.':
+    'اختر الإطار أو صفًا أو مربعًا لترى حدوده على الجانب. شغّل الشهر لتمتلئ المربعات يومًا بيوم بالاستخدام المذكور في التقرير.',
+  'Icons show where a limit is set: a globe for the enterprise and the universal default, a building for an organization, a briefcase for a cost center and a person for an individual limit. A question mark marks a row whose spending limit is not clear, and a dashed circle a user with no user limit found.':
+    'تبيّن الأيقونات أين وُضع الحد: كرة أرضية للمؤسسة الكبرى وللحد العام الافتراضي، ومبنى للمؤسسة، وحقيبة لمركز التكلفة، وشخص للحد الفردي. وعلامة الاستفهام لصف حد إنفاقه غير واضح، والدائرة المتقطعة لمستخدم لم يُعثر له على حد.',
+  'A spending limit stops billed usage only when it is set to stop. Included credits pay first, so only the rest counts against it.':
+    'يوقف حد الإنفاق الاستخدام المدفوع فقط إذا ضُبط على الإيقاف. تُدفع الأرصدة المشمولة أولًا، لذلك لا يُحتسب عليه إلا الباقي.',
+  'The enterprise limit counts cost center usage by default. A cost center can be left out in GitHub; the file does not show that.':
+    'يحتسب حد المؤسسة الكبرى استخدام مراكز التكلفة افتراضيًا. يمكن استثناء مركز تكلفة في GitHub، ولا يُظهر الملف ذلك.',
+  'Repository budgets are left out of the map. The budget table lists them.':
+    'تُستبعد ميزانيات المستودعات من الخريطة. ويعرضها جدول الميزانيات.',
+  'Playback applies the current limits to past usage. Spending limits keep the amount used when the data was collected. It is not a history of who was blocked.':
+    'يطبّق التشغيل الحدود الحالية على الاستخدام السابق. وتبقى حدود الإنفاق على المبلغ المستخدَم وقت جمع البيانات. هذا ليس سجلًا لمن أُوقف استخدامه.',
+  'Missing limits are not proof of unlimited usage. The paid usage policy is not collected.':
+    'غياب الحدود ليس دليلًا على أن الاستخدام غير محدود. ولا تُجمع سياسة الاستخدام المدفوع.',
+  'The enterprise limit is $590 with $270 used, so $320 is left. Mobile Studio has a $15 limit with $10 used: its own room is $5, less than $320, so the row shows $5 left. A member with a $20 cost center default who used $16 has a square 80% full.':
+    'حد المؤسسة الكبرى $590 واستُخدم منه $270، فيبقى $320. لدى Mobile Studio حد $15 استُخدم منه $10: المتبقي في حده $5، وهو أقل من $320، لذلك يعرض الصف $5 متبقية. والعضو الذي حده الافتراضي في مركز التكلفة $20 واستخدم $16 يمتلئ مربعه بنسبة 80%.',
   'The filters do not change this picture.': 'لا تغيّر عوامل التصفية هذه الصورة.',
-  'The enterprise has a spending limit of $5,000. Mobile Studio has a limit of $20 for each user, and everyone else has $30. Select a Mobile Studio user who used $16: their glass is 80% full, and the map marks the Mobile Studio spending limit as step 3 and the enterprise as step 4.':
-    'للمؤسسة الكبرى حد إنفاق $5,000. ولـ Mobile Studio حد $20 لكل مستخدم، ولكل الآخرين $30. اختر مستخدمًا من Mobile Studio استخدم $16: كأسه ممتلئة بنسبة 80%، وتعلّم الخريطة حد إنفاق Mobile Studio بالخطوة 3 والمؤسسة الكبرى بالخطوة 4.',
 
   // AI credit limit of a user
   'AI credit limit of a user': 'حد أرصدة الذكاء الاصطناعي لمستخدم',

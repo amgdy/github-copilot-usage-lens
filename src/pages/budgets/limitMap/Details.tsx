@@ -1,105 +1,39 @@
-import type { ReactNode } from 'react';
-import { Badge, Callout, ProgressBar, cx } from '../../../components/ui';
+import { Badge, DocLinks, cx } from '../../../components/ui';
 import { t } from '../../../i18n';
-import { budgetLevel, usedOnDay, type LimitBoard, type LimitFocus, type LimitTarget } from '../../../lib/collection';
+import { budgetLevel, roomOf, usedOnDay, type LimitBoard, type LimitLane, type LimitTarget, type LimitTop } from '../../../lib/collection';
 import type { DataStore } from '../../../lib/types';
-import { fmtInt, fmtPct, fmtUSD } from '../../../lib/utils/format';
+import { fmtInt, fmtPct } from '../../../lib/utils/format';
 import { useApp } from '../../../state/store';
-import { levelTone, scopeDrill } from '../levels';
-import { CHECK_ORDER, Fact, GROUP_ABOUT, Heading, SCOPE_NAMES, SpendingLimit, Step, groupKindLabel, groupTitle } from './parts';
+import { scopeDrill } from '../levels';
+import { Fact, Gauge, Heading, KIND_ABOUT, KIND_ICONS, SpendingLimit, USER_KINDS, WithIcon, kindLabel, laneAbout, laneEyebrow, laneIcon, laneTitle, levelOfShare, limitName, money, roomText, topIcon, topLabel, type UserKind } from './parts';
 
-const PEOPLE_SHOWN = 6;
+const CAVEAT = 'This file cannot confirm the full billing path, enterprise exclusions, or whether paid usage is enabled. Check these in GitHub.';
 
-function LinkButton({ onClick, children }: { onClick: () => void; children: ReactNode }) {
-  return (
-    <button type="button" className="btn btn-sm" onClick={onClick}>
-      {children}
-    </button>
-  );
+const kindName = (kind: UserKind) => <WithIcon Icon={KIND_ICONS[kind]}>{kindLabel(kind)}</WithIcon>;
+
+const reachedFirstText = (top: LimitTop): string => (top.scope === 'enterprise' ? t('The enterprise limit is reached first.') : t('The organization limit is reached first.'));
+
+/** GitHub can leave a cost center out of the enterprise limit. The file does not say which, so a cost center says so. */
+function ExclusionNote({ lane, top }: { lane: LimitLane | undefined; top: LimitTop }) {
+  if (lane?.kind !== 'cost_center' || top.scope !== 'enterprise') return null;
+  return <p className="text-[11px] text-fg-subtle">{t('By default, the enterprise limit counts this cost center too. GitHub can leave a cost center out of it, and this file does not show that.')}</p>;
 }
 
-/** The users of a selection that are closest to their limit, to jump to one. */
-function PeopleList({ board, indexes, shares, day, choose }: { board: LimitBoard; indexes: number[]; shares: Float32Array; day: number | null; choose: (target: LimitTarget) => void }) {
-  const shareOf = (userIndex: number) => (Number.isFinite(shares[userIndex]) ? shares[userIndex] : -1);
-  const fullest = [...indexes].sort((a, b) => shareOf(b) - shareOf(a) || usedOnDay(board, b, day) - usedOnDay(board, a, day) || board.users[a].login.localeCompare(board.users[b].login));
-  if (fullest.length === 0) return <p className="text-xs text-fg-subtle">{t('No users here.')}</p>;
+function Step({ number, title, children }: { number: number; title: string; children: string }) {
   return (
-    <div className="space-y-1">
-      <p className="eyebrow text-fg-subtle">{t('Closest to their limit')}</p>
-      <ul className="space-y-0.5">
-        {fullest.slice(0, PEOPLE_SHOWN).map((userIndex) => {
-          const share = shares[userIndex];
-          return (
-            <li key={userIndex}>
-              <button type="button" className="flex w-full items-baseline justify-between gap-2 rounded-[3px] px-1 py-0.5 text-start text-xs hover:bg-surface-2" onClick={() => choose({ kind: 'user', index: userIndex })}>
-                <span className="min-w-0 truncate text-accent">{board.users[userIndex].login}</span>
-                <span className={cx('num shrink-0', Number.isFinite(share) && share >= 1 ? 'text-bad' : 'text-fg-muted')}>
-                  {Number.isFinite(share) ? fmtPct(share, 0) : fmtUSD(usedOnDay(board, userIndex, day), 2)}
-                </span>
-              </button>
-            </li>
-          );
-        })}
-      </ul>
-      {fullest.length > PEOPLE_SHOWN ? <p className="num text-[11px] text-fg-subtle">{t('{n} more', { n: fmtInt(fullest.length - PEOPLE_SHOWN) })}</p> : null}
-    </div>
-  );
-}
-
-/** One step of the path of a user, numbered in the order GitHub checks it. */
-function PathStep({ step, title, children }: { step: number; title: string; children: ReactNode }) {
-  return (
-    <li className="flex gap-2.5">
-      <Step step={step} active />
-      <div className="min-w-0 flex-1 space-y-1.5">
-        <p className="text-xs font-semibold">{title}</p>
-        {children}
-      </div>
+    <li className="grid grid-cols-[1.25rem_minmax(0,1fr)] gap-2">
+      <span className="num flex size-5 items-center justify-center rounded-xs border border-border text-[11px] font-semibold" aria-hidden>{number}</span>
+      <span className="min-w-0">
+        <span className="block text-xs font-semibold">{title}</span>
+        <span className="block text-xs text-fg-muted">{children}</span>
+      </span>
     </li>
-  );
-}
-
-/** A name that selects a part of the map. */
-function PickLink({ onClick, children }: { onClick: () => void; children: ReactNode }) {
-  return (
-    <button type="button" className="max-w-full truncate text-start text-xs font-medium text-accent hover:underline" onClick={onClick}>
-      {children}
-    </button>
-  );
-}
-
-const topStepTitle = (board: LimitBoard): string => (board.topScope === 'enterprise' ? t('Spending limit of the enterprise') : t('Spending limit of the organization'));
-
-function HeldCounts({ board }: { board: LimitBoard }) {
-  const held = board.held;
-  const total = held.own + held['cost-center'] + held.everyone + held.none;
-  return (
-    <div>
-      <p className="eyebrow text-fg-subtle">{t('Users by the limit that holds them')}</p>
-      <dl className="mt-1.5 divide-y divide-border-muted rounded-md border border-border-muted text-xs">
-        {[
-          { label: t('Own budget'), value: held.own, warn: false },
-          { label: t('Cost center limit'), value: held['cost-center'], warn: false },
-          { label: t('Limit for each user'), value: held.everyone, warn: false },
-          { label: t('No limit'), value: held.none, warn: held.none > 0 },
-        ].map((item) => (
-          <div key={item.label} className="flex items-baseline justify-between gap-3 px-2.5 py-1">
-            <dt className="text-fg-muted">{item.label}</dt>
-            <dd className={cx('num font-medium', item.warn && 'text-warn')}>{fmtInt(item.value)}</dd>
-          </div>
-        ))}
-      </dl>
-      <p className="mt-1 text-[11px] text-fg-subtle">
-        {t('Out of {n} users with usage this month or listed by GitHub.', { n: fmtInt(total) })}
-      </p>
-    </div>
   );
 }
 
 export interface DetailsProps {
   board: LimitBoard;
   target: LimitTarget;
-  focus: LimitFocus | null;
   shares: Float32Array;
   day: number | null;
   store: DataStore;
@@ -107,167 +41,146 @@ export interface DetailsProps {
   choose: (target: LimitTarget) => void;
 }
 
-/** What the selection is, and every limit that holds it in the order GitHub checks them. */
-export function Details({ board, target, focus, shares, day, store, userIds, choose }: DetailsProps) {
-  const top = board.top >= 0 ? board.places[board.top] : null;
+export function Details({ board, target, shares, day, store, userIds, choose }: DetailsProps) {
+  const { top } = board;
 
   if (target.kind === 'user') {
     const user = board.users[target.index];
-    const share = shares[target.index];
     const used = usedOnDay(board, target.index, day);
+    const share = shares[target.index];
+    const lane = board.lanes[user.lane];
     const userId = userIds.get(user.login.toLowerCase());
-    const group = board.groups[user.group];
+    const laneRow = lane?.gauge ?? null;
     return (
       <div className="space-y-3">
-        <Heading eyebrow={groupKindLabel(user.kind)} title={user.login} />
-        <p className="text-xs text-fg-muted">{t('GitHub checks these limits for each request, from the first step up. Any one can stop the usage.')}</p>
-        <ol className="space-y-3">
-          <PathStep step={1} title={t('The limit of the user')}>
-            {group ? <PickLink onClick={() => choose({ kind: 'group', index: user.group })}>{groupTitle(group)}</PickLink> : null}
-            {user.limit !== null ? (
-              <>
-                <Fact label={groupKindLabel(user.kind)}>{fmtUSD(user.limit, 0)}</Fact>
-                <Fact label={t('Used')}>{fmtUSD(used, 2)}</Fact>
-                <Fact label={t('Credit left')}>{fmtUSD(Math.max(0, user.limit - used), 2)}</Fact>
-                {Number.isFinite(share) ? (
-                  <div className="space-y-1">
-                    <ProgressBar value={Math.min(1, share)} tone={levelTone(budgetLevel(share))} height={6} label={t('Share of the limit used')} />
-                    <p className={cx('num text-[11px]', share >= 1 ? 'text-bad' : 'text-fg-subtle')}>{share >= 1 ? t('Used up. GitHub stops the usage of this user.') : t('{share} used', { share: fmtPct(share, 0) })}</p>
-                  </div>
-                ) : null}
-              </>
-            ) : (
-              <>
-                <Fact label={t('Used')}>{fmtUSD(used, 2)}</Fact>
-                <p className="text-xs text-warn">{t('No limit holds this user. Only the spending limits above can stop them.')}</p>
-              </>
-            )}
-          </PathStep>
-          <PathStep step={2} title={t('Included credits')}>
-            <p className="text-xs text-fg-muted">{t('Included credits pay for the usage while they last. Only the rest is billed and counts against the spending limits.')}</p>
-          </PathStep>
-          <PathStep step={3} title={t('Spending limits that count their usage')}>
-            {user.places.length > 0 ? (
-              user.places.map((placeIndex) => {
-                const place = board.places[placeIndex];
-                return (
-                  <div key={placeIndex} className="space-y-1">
-                    <p className="flex items-baseline justify-between gap-2">
-                      <PickLink onClick={() => choose({ kind: 'place', index: placeIndex })}>{place.name}</PickLink>
-                      <span className="shrink-0 text-[11px] text-fg-subtle">{t(SCOPE_NAMES[place.scope])}</span>
-                    </p>
-                    {place.limits.map((row) => (
-                      <SpendingLimit key={row.budget.id} row={row} />
-                    ))}
-                  </div>
-                );
-              })
-            ) : (
-              <p className="text-xs text-fg-muted">{t('No cost center, organization or repository limit counts their usage.')}</p>
-            )}
-          </PathStep>
-          <PathStep step={4} title={topStepTitle(board)}>
-            {top !== null ? top.limits.map((row) => <SpendingLimit key={row.budget.id} row={row} />) : <p className="text-xs text-warn">{t('No spending limit at the top.')}</p>}
-          </PathStep>
-        </ol>
-        <div className="space-y-1 border-t border-border-muted pt-2">
-          {user.costCenter ? <Fact label={t('Cost center')}>{user.costCenter}</Fact> : null}
-          {user.organization ? <Fact label={t('Organization')}>{user.organization}</Fact> : null}
-          <p className="text-[11px] text-fg-subtle">{day === null && user.usedFrom === 'github' ? t('Amount used as GitHub showed it.') : t('Amount used from the usage report, included credits too.')}</p>
+        <Heading eyebrow={kindLabel(user.kind)} Icon={KIND_ICONS[user.kind]} title={user.login} />
+        <p className="text-xs text-fg-muted">{t(KIND_ABOUT[user.kind])}</p>
+        <div className="space-y-2 rounded-md border border-accent/40 bg-accent-soft p-3">
+          <p className="eyebrow text-accent">{t('Effective user limit')}</p>
+          <p className="num font-display text-2xl font-semibold">{user.limit === null ? t('Not found') : money(user.limit)}</p>
+          <Fact label={t('Used')}>{money(used)}</Fact>
+          {user.limit !== null ? (
+            <>
+              <Fact label={t('Credit left')}>{money(Math.max(0, user.limit - used))}</Fact>
+              <Gauge share={Number.isFinite(share) ? share : 0} level={Number.isFinite(share) ? budgetLevel(share) : null} />
+              <p className="text-[11px]">{user.limit === 0 ? t('A zero user limit blocks AI credit usage immediately.') : t('{share} used', { share: fmtPct(share, 0) })}</p>
+              <Badge tone="neutral">{t('Always stops at the user limit')}</Badge>
+            </>
+          ) : null}
         </div>
-        {userId !== undefined ? <LinkButton onClick={() => useApp.getState().selectUser(userId)}>{t('Open this user')}</LinkButton> : null}
-      </div>
-    );
-  }
-
-  if (target.kind === 'group') {
-    const group = board.groups[target.index];
-    const place = group.place >= 0 ? board.places[group.place] : null;
-    const open = group.kind === 'cost-center' ? scopeDrill('cost_center', group.name, store) : null;
-    return (
-      <div className="space-y-3">
-        <Heading eyebrow={groupKindLabel(group.kind)} title={groupTitle(group)} />
-        <p className="text-xs text-fg-muted">{t(GROUP_ABOUT[group.kind])}</p>
-        {group.kind === 'none' && board.everyone === null ? (
-          <Callout tone="warn" title={t('No limit for each user')}>
-            {t('Users without a budget of their own or a cost center limit can use AI credits without a cap. Only the spending limits above stop them.')}
-          </Callout>
-        ) : null}
-        {group.poolCapped ? (
-          <Badge tone="info" title={t('This cost center may use only the included credits of its own members.')}>
-            {t('Own credit share')}
-          </Badge>
-        ) : null}
-        <div className="space-y-1">
-          {group.perUser ? <Fact label={t('Limit for each user')}>{fmtUSD(group.perUser.amount, 0)}</Fact> : null}
-          <Fact label={t('Users')}>{fmtInt(group.members.length)}</Fact>
-          {group.kind !== 'none' ? <Fact label={t('Used up')}>{fmtInt(group.usedUp)}</Fact> : null}
-          {focus !== null ? <Fact label={t('Spending limits that count their usage')}>{fmtInt([...focus.places].filter((placeIndex) => placeIndex !== board.top).length)}</Fact> : null}
-        </div>
-        {place !== null ? (
-          <div className="space-y-1.5">
-            <p className="eyebrow text-fg-subtle">{t('Spending limit of the cost center')}</p>
-            {place.limits.map((row) => (
-              <SpendingLimit key={row.budget.id} row={row} />
-            ))}
+        {user.replaces.length > 0 ? (
+          <div className="space-y-1">
+            <p className="eyebrow text-fg-subtle">{t('Replaced user limits')}</p>
+            {user.replaces.map((replaced) => <Fact key={replaced.budget.id} label={kindName(replaced.kind)}>{money(replaced.amount)}</Fact>)}
+            <p className="text-[11px] text-fg-muted">{t('These do not also cap this user. They are not extra credits.')}</p>
           </div>
         ) : null}
-        <PeopleList board={board} indexes={group.members} shares={shares} day={day} choose={choose} />
-        <div className="flex flex-wrap gap-2">
-          {group.place >= 0 ? <LinkButton onClick={() => choose({ kind: 'place', index: group.place })}>{t('Show its spending limit')}</LinkButton> : null}
-          {open ? <LinkButton onClick={open}>{t('Show its usage')}</LinkButton> : null}
+        <div className="space-y-1.5">
+          <p className="eyebrow text-fg-subtle">{t('Spending limits that also apply')}</p>
+          {lane !== undefined && lane.kind !== 'top' ? (
+            <button type="button" className="block w-full rounded-md border border-border px-2 py-1.5 text-start hover:bg-surface-2" onClick={() => choose({ kind: 'lane', index: user.lane })}>
+              <span className="eyebrow block text-fg-subtle"><WithIcon Icon={laneIcon(lane, top)}>{laneEyebrow(lane)}</WithIcon></span>
+              <span className="block break-words text-xs font-semibold">{laneTitle(lane, top)}</span>
+              <span className="num block text-[11px] text-fg-muted">
+                {laneRow !== null
+                  ? `${limitName(laneRow)} ${money(laneRow.budget.amount)} · ${t('{amount} left', { amount: roomText(roomOf(laneRow)) })}`
+                  : lane.kind === 'unclear'
+                    ? t('GitHub picks one seat organization each billing cycle.')
+                    : lane.countedByTop
+                      ? t('No spending limit of its own')
+                      : t('Its spending limit is set in the enterprise and is not in this file.')}
+              </span>
+            </button>
+          ) : null}
+          {lane === undefined || lane.countedByTop ? (
+            <button type="button" className="block w-full rounded-md border border-border px-2 py-1.5 text-start hover:bg-surface-2" onClick={() => choose({ kind: 'top' })}>
+              <span className="eyebrow block text-fg-subtle"><WithIcon Icon={topIcon(top)}>{topLabel(top)}</WithIcon></span>
+              <span className="block break-words text-xs font-semibold">{top.name}</span>
+              <span className="num block text-[11px] text-fg-muted">
+                {top.wall !== null ? `${limitName(top.wall)} ${money(top.wall.budget.amount)} · ${t('{amount} left', { amount: roomText(top.room) })}` : top.known ? t('No spending limit is set here.') : t('Not known')}
+              </span>
+            </button>
+          ) : (
+            <p className="text-[11px] text-fg-muted">{t('GitHub bills the usage of its members to this cost center of the enterprise, so the organization limit does not count it.')}</p>
+          )}
+          <ExclusionNote lane={lane} top={top} />
+          <p className="text-[11px] text-fg-muted">{t('The user limit always stops usage. A spending limit stops billed usage only when it is set to stop.')}</p>
         </div>
+        <div className="space-y-1">
+          {user.costCenter ? <Fact label={t('Cost center assignment')}>{user.costCenter}</Fact> : null}
+          {user.organizations.length > 0 ? <Fact label={t('Seat organization')}>{user.organizations.join(', ')}</Fact> : null}
+          {user.poolCapped ? <p className="text-xs text-info">{t('This cost center can draw only its own included credit share. An individual limit does not remove that control.')}</p> : null}
+          <p className="text-[11px] text-fg-subtle">{day === null && user.usedFrom === 'github' ? t('Amount used as GitHub showed it.') : t('Amount used from the usage report, included credits too.')}</p>
+        </div>
+        {userId !== undefined ? <button type="button" className="btn btn-sm" onClick={() => useApp.getState().selectUser(userId)}>{t('Open this user')}</button> : null}
       </div>
     );
   }
 
-  if (target.kind === 'place') {
-    const place = board.places[target.index];
-    const open = place.top ? null : scopeDrill(place.scope, place.name, store);
-    const counted = focus !== null ? [...focus.users] : [];
+  if (target.kind === 'lane') {
+    const lane = board.lanes[target.index];
+    const usedUp = lane.members.filter((userIndex) => levelOfShare(shares[userIndex]) === 'used-up').length;
+    const open = lane.kind === 'cost_center' || lane.kind === 'organization' ? scopeDrill(lane.kind, lane.name, store) : null;
     return (
       <div className="space-y-3">
-        <Heading eyebrow={t(SCOPE_NAMES[place.scope])} title={place.name} />
-        {place.seats !== null ? <Fact label={t('Seats')}>{fmtInt(place.seats)}</Fact> : null}
-        {place.limits.map((row) => (
-          <SpendingLimit key={row.budget.id} row={row} />
-        ))}
-        {place.top ? (
-          <>
-            <p className="text-xs text-fg-muted">{t('It counts the amount billed for every user. When it stops usage, it stops everyone.')}</p>
-            <HeldCounts board={board} />
-          </>
-        ) : (
-          <>
-            <p className="text-xs text-fg-muted">{t('It counts the amount billed for the usage of these users. When it stops usage, it stops them all, whatever their own limit.')}</p>
-            <Fact label={t('Users it counts')}>{fmtInt(counted.length)}</Fact>
-            <PeopleList board={board} indexes={counted} shares={shares} day={day} choose={choose} />
-          </>
-        )}
-        <div className="flex flex-wrap gap-2">
-          {place.group >= 0 ? <LinkButton onClick={() => choose({ kind: 'group', index: place.group })}>{t('Show its users')}</LinkButton> : null}
-          {open ? <LinkButton onClick={open}>{t('Show its usage')}</LinkButton> : null}
+        <Heading eyebrow={laneEyebrow(lane)} Icon={laneIcon(lane, top)} title={laneTitle(lane, top)} />
+        <p className="text-xs text-fg-muted">{laneAbout(lane, top)}</p>
+        {lane.limits.length > 0 ? (
+          lane.limits.map((row) => <SpendingLimit key={row.budget.id} row={row} />)
+        ) : lane.kind === 'cost_center' || lane.kind === 'organization' ? (
+          <p className="text-xs">{lane.countedByTop ? t('No spending limit of its own') : t('Its spending limit is set in the enterprise and is not in this file.')}</p>
+        ) : null}
+        <div className="space-y-1">
+          {lane.kind !== 'unclear' && (lane.countedByTop || lane.limits.length > 0) ? <Fact label={t('Room left')}>{roomText(lane.room)}</Fact> : null}
+          {lane.capacity !== null && lane.reachedFirst === 'top' ? <p className="text-[11px] text-fg-muted">{reachedFirstText(top)}</p> : null}
+          {lane.seats !== null ? <Fact label={t('Seats')}>{fmtInt(lane.seats)}</Fact> : null}
+          {lane.perUser !== null ? <Fact label={kindName(lane.perUser.kind)}>{t('{amount} each', { amount: money(lane.perUser.budget.amount) })}</Fact> : null}
+          <Fact label={t('Users')}>{fmtInt(lane.members.length)}</Fact>
+          <Fact label={t('Reached their user limit')}>{fmtInt(usedUp)}</Fact>
         </div>
+        {lane.poolCapped ? <p className="text-xs text-info">{t('This cost center can draw only its own included credit share. An individual limit does not remove that control.')}</p> : null}
+        <ExclusionNote lane={lane} top={top} />
+        {open ? <button type="button" className="btn btn-sm" onClick={open}>{t('Show its usage')}</button> : null}
+      </div>
+    );
+  }
+
+  if (target.kind === 'top') {
+    return (
+      <div className="space-y-3">
+        <Heading eyebrow={topLabel(top)} Icon={topIcon(top)} title={top.name} />
+        <p className="text-xs text-fg-muted">
+          {top.scope === 'enterprise'
+            ? t('The enterprise limit holds the billed usage of the whole enterprise. Every other spending limit sits inside it and can only stop usage sooner.')
+            : t('The organization limit holds the billed usage of the whole organization.')}
+        </p>
+        {top.limits.length > 0 ? top.limits.map((row) => <SpendingLimit key={row.budget.id} row={row} />) : <p className="text-xs">{top.known ? t('No spending limit is set here.') : t('The file has no full budget list, so this limit is not known.')}</p>}
+        <div className="space-y-1">
+          {top.wall !== null ? <Fact label={t('Room left')}>{roomText(top.room)}</Fact> : null}
+          {board.everyone !== null ? <Fact label={kindName('everyone')}>{t('{amount} each', { amount: money(board.everyone.amount) })}</Fact> : null}
+          {top.inside > 0 ? <Fact label={t('Limits inside, added up')}>{top.insideShare !== null ? `${money(top.inside)} · ${fmtPct(top.insideShare, 0)}` : money(top.inside)}</Fact> : null}
+          <Fact label={t('Users')}>{fmtInt(board.users.length)}</Fact>
+        </div>
+        {top.insideShare !== null && top.insideShare > 1 ? <p className="text-xs text-fg-muted">{t('They cannot all be used in full. The limit around them is reached first.')}</p> : null}
+        {top.scope === 'enterprise' ? <p className="text-[11px] text-fg-subtle">{t('By default it also counts cost center usage. A cost center can be left out in GitHub; this file does not show that. It does not cap license fees.')}</p> : null}
       </div>
     );
   }
 
   return (
-    <div className="space-y-4">
-      <Heading eyebrow={board.topScope === 'enterprise' ? t('Enterprise account') : t('Organization')} title={board.topName} />
-      <HeldCounts board={board} />
-      <div>
-        <p className="eyebrow text-fg-subtle">{t('Order GitHub checks')}</p>
-        <ol className="mt-1.5 space-y-1.5 text-xs">
-          {CHECK_ORDER.map((step, index) => (
-            <li key={step} className="flex gap-2">
-              <Step step={index + 1} />
-              <span className="text-fg-muted">{t(step)}</span>
-            </li>
-          ))}
-        </ol>
+    <div className="space-y-3">
+      <Heading eyebrow={t('How GitHub checks a request')} title={top.name} />
+      <ol className="space-y-2.5">
+        <Step number={1} title={t('The user limit')}>{t('Individual, else cost center default, else universal. It counts included credits too and always stops usage.')}</Step>
+        <Step number={2} title={t('Included credits')}>{t('Usage is paid from the shared included credits first. After they run out, paid usage must be turned on.')}</Step>
+        <Step number={3} title={t('A spending limit')}>{t('The cost center limit, else the seat organization limit, else only the enterprise limit. The one with the least room left is reached first.')}</Step>
+      </ol>
+      <div className={cx('space-y-1 border-t border-border-muted pt-3')}>
+        {USER_KINDS.map((kind) => <Fact key={kind} label={kindName(kind)}>{fmtInt(board.held[kind])}</Fact>)}
       </div>
-      <p className="text-[11px] text-fg-subtle">{t('Select a glass, a group or a user to see every limit that holds it. Each one gets the number of its step.')}</p>
+      <p className="text-xs text-fg-muted">{t('Select the frame, a row or a square to see its limits.')}</p>
+      <p className="text-[11px] text-fg-subtle">{t(CAVEAT)}</p>
+      <DocLinks topic="budgets" compact limit={1} />
     </div>
   );
 }

@@ -274,10 +274,10 @@ $script:AuditFilter = @'
 
 $script:TeamsFilter = '.[] | ({slug, name} | wrap("team")), "#team \(.slug)"'
 
-# One line per AI usage report on the billing page: id, first day, last day and status.
+# One line per AI usage report on the billing page: id, first day, last day, status and when GitHub made it.
 $script:ReportListFilter = @'
 (.usage_report_exports // [])[] | select(.report_type == "ai_credit")
-  | "#report \(.id)\t\((.start_date // "")[0:10])\t\((.end_date // "")[0:10])\t\(.status // "")"
+  | "#report \(.id)\t\((.start_date // "")[0:10])\t\((.end_date // "")[0:10])\t\(.status // "")\t\(.created_at // "")"
 '@
 
 $script:ReportStatusFilter = '"#status \(.status // "")", ((.download_urls // [])[])'
@@ -401,9 +401,10 @@ function Show-Sources {
   Write-Line 'For organizations, the billing sources need an organization owner or billing manager. The activity sources need the'
   Write-Line 'usage metrics policy for GitHub Copilot set to "Enabled everywhere".'
   Write-Line ''
-  Write-Line 'usage-report uses a report from the last 31 days when one covers the month. Otherwise it asks GitHub to make one,'
-  Write-Line 'which takes a few minutes and adds the report to the billing page. GitHub makes one report at a time, so the script'
-  Write-Line 'asks for the next month when the one before is ready. It changes no settings.'
+  Write-Line 'usage-report uses a report from the last 31 days when it covers the month and GitHub made it after the month ended.'
+  Write-Line 'Otherwise it asks GitHub to make one, which takes a few minutes and adds the report to the billing page. For the month'
+  Write-Line 'the script runs in, it asks for a new one unless GitHub is still making one. GitHub makes one report at a time, so the'
+  Write-Line 'script asks for the next month when the one before is ready. It changes no settings.'
 }
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -1609,23 +1610,31 @@ function Request-UsageReports {
   $listed = @(Get-ControlValues $script:GhLines 'report')
   foreach ($month in $script:MonthKeys) {
     $days = Get-MonthDays $month
-    # A finished report first, then one GitHub is still making. It must cover the whole month and no other month.
+    # It must cover the whole month and no other month. A finished report has all the usage only when GitHub made it
+    # after the last day, so the newest of those is used. This month is not over, so its finished reports are never
+    # used; one that GitHub is still making is, so a run that stopped waiting for it can be repeated.
     $found = ''
+    $newest = ''
     $processingId = ''
-    $finishedFound = $false
     foreach ($entry in $listed) {
       $fields = $entry.Split([char]9)
       if ($fields.Count -lt 4) { continue }
       if ($fields[1] -cne $days.First -or [string]::CompareOrdinal($fields[2], $days.Last) -lt 0 -or
         [string]::CompareOrdinal($fields[2], $days.End) -gt 0) { continue }
-      if ($fields[3] -ceq 'completed') {
+      $madeAt = ''
+      if ($fields.Count -gt 4) { $madeAt = $fields[4] }
+      $madeDay = $madeAt
+      if ($madeDay.Length -gt 10) { $madeDay = $madeDay.Substring(0, 10) }
+      $madeAfter = [string]::CompareOrdinal($madeDay, $fields[2]) -gt 0
+      if ($fields[3] -ceq 'completed' -and $madeAfter -and [string]::CompareOrdinal($madeAt, $newest) -gt 0) {
+        $newest = $madeAt
         $found = $fields[0]
-        $finishedFound = $true
-        break
       }
-      if ($fields[3] -ceq 'processing' -and -not $processingId) { $processingId = $fields[0] }
+      if ($fields[3] -ceq 'processing' -and ($madeAfter -or $days.Last -ceq $script:Today) -and -not $processingId) {
+        $processingId = $fields[0]
+      }
     }
-    if (-not $finishedFound) { $found = $processingId }
+    if (-not $found) { $found = $processingId }
     if ($found -cmatch '^[A-Za-z0-9-]+\z') {
       $script:UsageReports.Add([pscustomobject]@{ Month = $month; ReportId = $found })
       $ready++
@@ -1675,8 +1684,10 @@ function Save-UsageReport {
     if ($line.StartsWith('https://', [StringComparison]::Ordinal)) { $links.Add($line) }
   }
   if ($links.Count -eq 0) {
-    Add-Status 'usage-report' 'failed' 0 0 'GitHub gave no file for this report.' $Endpoint
-    return $false
+    # GitHub makes no file for a finished report without usage, for example when the month has just started.
+    Add-Status 'usage-report' 'ok' 0 200 'GitHub made the report, but it has no usage for these days.' $Endpoint
+    $script:UsageReportMonths++
+    return $true
   }
   $downloadPath = [System.IO.Path]::Combine($script:WorkDir, 'download')
   $textPath = [System.IO.Path]::Combine($script:WorkDir, 'report.txt')

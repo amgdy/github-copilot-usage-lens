@@ -3,7 +3,7 @@ import type { LicenseParse } from '../licenses/types';
 import { BLANK, type DataStore } from '../types';
 import { heldUsers } from './limits';
 import { monthEndDay, monthIndexOf, monthStartDay, parseIsoDay } from '../utils/date';
-import type { AuditEvent, BillingAmounts, BillingMonth, Collection, CollectionSource, GitHubBudget, MetricsUser, SeatSummary } from './types';
+import { REPORT_WAITING_MESSAGES, type AuditEvent, type BillingAmounts, type BillingMonth, type Collection, type CollectionSource, type GitHubBudget, type MetricsUser, type SeatSummary } from './types';
 
 /** Days the usage report may miss at the start or end of a month and still count as covering it (quiet weekends). */
 const EDGE_DAYS = 3;
@@ -148,6 +148,17 @@ function sumMonth(lines: readonly BillingMonth[], month: string): BillingAmounts
 export function sourceComplete(sources: readonly CollectionSource[], id: string, month?: string): boolean {
   const runs = sources.filter((source) => source.id === id && (month === undefined || source.month === month));
   return runs.length > 0 && runs.every((source) => source.status === 'ok');
+}
+
+/**
+ * How the AI usage report of a month came back. complete: GitHub made it, with or without usage. waiting: GitHub had
+ * not made it in time, so the next run of the script can add it. missing: any other reason, which the Data page shows.
+ */
+export function usageReportState(sources: readonly CollectionSource[], month: string): 'complete' | 'waiting' | 'missing' {
+  if (sourceComplete(sources, 'usage-report', month)) return 'complete';
+  const runs = sources.filter((source) => source.id === 'usage-report' && source.month === month);
+  const waiting = (source: CollectionSource) => REPORT_WAITING_MESSAGES.some((start) => source.message.startsWith(start));
+  return runs.length > 0 && runs.every(waiting) ? 'waiting' : 'missing';
 }
 
 /** What GitHub billing says about AI credits in a month: the AI credit report, or else the billing summary. Null when neither is complete. */
