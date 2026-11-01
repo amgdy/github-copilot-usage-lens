@@ -4,6 +4,7 @@ import { useAnalysis } from '../../state/analysis';
 import { navigate, useRoute, type PageId } from '../../state/router';
 import { useApp } from '../../state/store';
 import { ErrorBoundary } from '../ErrorBoundary';
+import { StartFreshButton, StartFreshDialog } from '../StartFreshButton';
 import { UserDrawer } from '../UserDrawer';
 import { Drawer, PendingBar, Spinner, cx } from '../ui';
 import { FilterChips } from './FilterChips';
@@ -12,12 +13,13 @@ import { navItem } from './nav';
 import { CoverageNotice } from './CoverageNotice';
 import { PrintHeader } from './PrintHeader';
 import { SampleNotice } from './SampleNotice';
-import { Brand, NavList, Sidebar } from './Sidebar';
+import { BrandLink, NavList, Sidebar } from './Sidebar';
 import { TopBar } from './TopBar';
 
 const PAGES: Record<PageId, LazyExoticComponent<ComponentType>> = {
   overview: lazy(() => import('../../pages/OverviewPage')),
   spend: lazy(() => import('../../pages/SpendPage')),
+  budgets: lazy(() => import('../../pages/BudgetsPage')),
   users: lazy(() => import('../../pages/UsersPage')),
   segments: lazy(() => import('../../pages/SegmentsPage')),
   models: lazy(() => import('../../pages/ModelsPage')),
@@ -49,18 +51,21 @@ function MobileNav() {
       onClose={() => setOpen(false)}
       side="start"
       widthClass="w-[min(300px,85vw)]"
-      title={<Brand />}
+      title={<BrandLink onFollow={() => setOpen(false)} />}
       footer={
-        <button
-          type="button"
-          className="btn btn-sm w-full"
-          onClick={() => {
-            setOpen(false);
-            setPickingData(true);
-          }}
-        >
-          {t('Load other data')}
-        </button>
+        <div className="flex flex-col items-start gap-2.5">
+          <button
+            type="button"
+            className="btn btn-sm w-full"
+            onClick={() => {
+              setOpen(false);
+              setPickingData(true);
+            }}
+          >
+            {t('Load other data')}
+          </button>
+          <StartFreshButton look="link" className="text-xs" onOpen={() => setOpen(false)} />
+        </div>
       }
     >
       <div className="py-3">
@@ -115,6 +120,7 @@ export function AppShell() {
       <FilterDrawer />
       <UserDrawer />
       <MobileNav />
+      <StartFreshDialog />
     </div>
   );
 }

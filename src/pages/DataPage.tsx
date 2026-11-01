@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { StartFreshButton } from '../components/StartFreshButton';
 import { CalcInfo, PageHeader } from '../components/ui';
 import { t, tp } from '../i18n';
 import { fmtInt } from '../lib/utils/format';
@@ -10,6 +11,7 @@ import { DownloadButton } from './data/DownloadButton';
 import { EnrichmentCard } from './data/EnrichmentCard';
 import { scopeIndices } from './data/explorer';
 import { FilesCard } from './data/FilesCard';
+import { GitHubDataCard } from './data/GitHubDataCard';
 import { HelpCard } from './data/HelpCard';
 import { KpiRow } from './data/KpiRow';
 import { LicenseCard } from './data/LicenseCard';
@@ -39,6 +41,7 @@ export default function DataPage() {
         }
         actions={
           <>
+            <StartFreshButton />
             <LoadButton />
             <DownloadButton store={store} rows={scope} label={t('Download filtered rows (CSV)')} fileName={exportFileName(start, end)} primary />
           </>
@@ -54,6 +57,7 @@ export default function DataPage() {
         ) : null}
         <KpiRow store={store} scan={scan} gaps={gaps} />
         <LicenseCard report={analysis.licenses} roster={settings.roster} />
+        <GitHubDataCard />
         <FilesCard key={`files-${dataset.loadedAt}`} files={store.files} />
         <QualityCard checks={checks} />
         <ContentsCard store={store} scan={scan} />

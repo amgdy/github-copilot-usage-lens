@@ -22,6 +22,8 @@ A guide for people and AI coding agents who work on this project. Read it before
 | `npm run build:single` | One self-contained `dist/index.html` that works offline. |
 | `npm run gen:demo` | Write a made-up usage CSV to `demo-data/` for tests and manual tries. |
 | `npm run check:prices` | Compare the built-in price card with the live GitHub Docs pricing page. |
+| `bash scripts/collect.sh` | Read seats, budgets, billing, activity, seat changes and (for an enterprise) the AI usage report from GitHub with the GitHub CLI (`gh`) and save one GitHub data file. Read only. |
+| `pwsh -File scripts/collect.ps1` | The same collector in PowerShell. On Windows: `powershell -ExecutionPolicy Bypass -File scripts\collect.ps1`. |
 
 ## Where things are
 
@@ -34,6 +36,8 @@ src/
                       recommendations, tips; analyze.ts is the one entry point
     licenses/         reading the GitHub Copilot license list (seat assignments) and
                       matching it to the usage report
+    collection/       reading the GitHub data file of the collector scripts and what it adds:
+                      seats, budgets, billing, activity, seat changes (derive.ts)
     pricing/          model price card (card.ts), model groups, live price check (docsParser.ts)
     metrics/          how every number is calculated (docs/*.ts), shown in the app
     demo/             made-up data generator for the sample report, tests and `gen:demo`
@@ -43,13 +47,16 @@ src/
   i18n/               translation core; ar/*.ts holds the Arabic text
   state/              store (Zustand), router (hash), analysis provider, theme
   components/         shared UI: layout, ui kit, charts (ECharts), icons, user drawer
-  pages/              one file per page plus a folder of its parts
+  pages/              one file per page plus a folder of its parts; budgets/limitMap/ holds the
+                      Limit map of the Budgets page (its model is pure and tested in
+                      lib/collection/limitBoard.ts)
 tests/                Vitest suites, including guard tests (naming, i18n, metric docs, readable names)
-scripts/              demo data and price check scripts
+scripts/              demo data and price check scripts, and the collector scripts
+                      (collect.sh for bash, collect.ps1 for PowerShell)
 docs/FEATURES.md      what the app does and the value it gives admins
 ```
 
-Pages: Overview, Usage and pool, Users, Segments, Models, Efficiency, Organization, Patterns, Recommendations, Licenses, Data, Settings, Methodology.
+Pages: Overview, Usage and pool, Budgets, Users, Segments, Models, Efficiency, Organization, Patterns, Recommendations, Licenses, Data, Settings, Methodology.
 
 ## Key ideas you must keep right
 
@@ -81,6 +88,8 @@ Pages: Overview, Usage and pool, Users, Segments, Models, Efficiency, Organizati
 - Fonts are bundled so the report looks the same offline (`src/fonts.css`): Mona Sans by GitHub for English and IBM Plex Sans Arabic for Arabic. Titles and big numbers use `font-display` (a wider Mona Sans).
 - Use the shared tokens in `src/index.css`. Corners are small: 2 px marks, 3 px tags, 4 px controls, 6 px blocks and 8 px panels. Bars, dots and labels are square; only switches and info buttons are round.
 - Use the shared pieces: `.eyebrow` for small section labels, Lucide icons for navigation and feature lists, `.card` for panels and `Brand` for the mark and name. The mark (`BrandMark`) is a coffee mug that holds the credit pool, with usage bars and a lens; `Brand` shows it animated (CSS only, stopped for reduced motion and print). The favicon in `index.html` is the still version, and the logo files are in `docs/brand/`. Keep all three in step when the mark changes. Do not add palettes for single components.
+- The Budgets page has one **Limit map** (`src/pages/budgets/limitMap/`), built with HTML and CSS. The outer limit (enterprise, or organization in an organization file) is a frame around everything. Each row inside is the spending limit a user's billed usage checks: their cost center, else their only seat organization with a limit, else only the frame. Users with seats in several organizations, or no seat, go in a "not clear" row, because GitHub picks one organization each billing cycle. Room left in a row is the smaller of its own room and the frame's. In an organization file, users in an enterprise cost center go in a dashed box outside the frame (`countedByTop` is false), because GitHub bills them to the cost center, not the organization. Each square is one person, filled to the share of their user limit used: individual, else cost center default, else universal. An individual limit replaces broader per-user limits, not spending limits or included-pool controls. Teams can assign cost centers but are not another budget level. Icons (`KIND_ICONS`, `laneIcon` and `topIcon` in `parts.tsx`) mark where a limit is set and must match in the legend, the rows and the details. Enterprise exclusions and the paid usage policy are not collected, so never claim every user is blocked by an enterprise budget. Repository budgets remain in the budget table, not the AI credit map. Search reveals a hidden user without rendering the whole group. Playback compares past usage with current limits, not historical blocking. Keep one view, with no 3D or animated billing paths.
+- Numbers have an order of weight, so the ones that matter stand out. Do not make every number bold: when everything is bold, nothing stands out. Each tile or panel has one big value. In a sentence, the figures that answer the question (money, percents, multiples and limits) are semibold through `Figures` (it finds them in the text) or `Fig` (by hand, for example for an important count). Inside gray text they also take the full text color. Each table makes its one key column semibold with `strong: true`. Dates, counts and IDs stay regular. Color is only for meaning, never for emphasis. `tests/figures.test.ts` checks this.
 - Keep layouts usable in Arabic and right to left, in light and dark. `tests/theme.test.ts` checks the colors, the contrast of every text color in every color set, the corner sizes and the bundled fonts.
 
 ### Every number explains itself
@@ -117,12 +126,26 @@ Pages: Overview, Usage and pool, Users, Segments, Models, Efficiency, Organizati
 - Tests start Node with `--no-experimental-webstorage` (see `vite.config.ts`), so `localStorage` is undefined in tests. A test that needs it must stub it.
 
 ### Data and privacy
-- Never read, copy, bundle or test with real customer exports. Git ignores a local `samples/` folder, `*.csv` and `seats*.json` because they may hold private files: do not open them. Tests use made-up data (`tests/fixtures.ts`, `makeCsv`, `generateDemo`).
-- The start page has two ways in: choose or drop your own files, or **View a sample report**. The sample is made up in the browser by `src/state/loadSample.ts`, which loads the generator only when clicked and never reads a file. While the sample is open, every page says so (`SampleNotice`), and the saved license list is left out of the analysis (`withoutRoster`), so real names never mix with invented data. Settings and Licenses say why the list is not used (`SampleListNote`), never compare the list with the sample's users, and turn off the button that fills the list from the loaded report, so invented users are never saved as seats. Any new code that reads `useApp((s) => s.dataset)` directly must check `dataset.sample` in the same way. `tests/landing.test.ts`, `tests/sample-report.test.ts`, `tests/sample-license-list.test.ts` and `tests/data-isolation.test.ts` guard this.
+- Never read, copy, bundle or test with real customer exports. Git ignores a local `samples/` folder, `*.csv`, `seats*.json` and the GitHub data files (`usage-lens-data*.ndjson`, `.ndjson.gz`) because they may hold private files: do not open them. Tests use made-up data (`tests/fixtures.ts`, `makeCsv`, `generateDemo`, `tests/collectionLines.ts`).
+- The start page has two ways in: choose or drop your own files, or **View a sample report**. The sample is made up in the browser by `src/state/loadSample.ts`, which loads the generator only when clicked and never reads a file. While the sample is open, every page says so (`SampleNotice`), and the saved license list is left out of the analysis (`withoutRoster`), so real names never mix with invented data. Settings and Licenses say why the list is not used (`SampleListNote`), never compare the list with the sample's users, and turn off the button that fills the list from the loaded report, so invented users are never saved as seats. The sample also has made-up GitHub data (seats, budgets, billing and audit events) from `src/lib/demo/github.ts`, loaded through `dataset.sampleGitHub`; your own GitHub data file is never used with the sample. Any new code that reads `useApp((s) => s.dataset)` directly must check `dataset.sample` in the same way. `tests/landing.test.ts`, `tests/sample-report.test.ts`, `tests/sample-license-list.test.ts` and `tests/data-isolation.test.ts` guard this.
 - The sample generator (`src/lib/demo/generate.ts`) builds a made-up company with `DEMO_SEAT_COUNT` seats over three months. Logins follow the GitHub Enterprise Managed Users pattern: an invented Microsoft Entra ID login name, `_` and the short code `DEMO_SHORTCODE` (for example `KofiIto_nwind`). The months are built so that every recommendation shows in some view (the whole range, one month or the `northwind-labs` organization). Keep it that way when you change the generator; `tests/recommendations.test.ts` checks it.
 - No network calls, except the live price check that the user starts in Settings.
 - The build version (`BuildVersion`) is baked in at build time from the GitHub Actions variables. It links only to github.com runs and commits and never calls the network.
-- Settings are stored in `localStorage` (`ghcu.settings.v1`); the theme, color set, language, Arabic digits and the Show calculations switch in `ghcu.theme`, `ghcu.palette`, `ghcu.locale`, `ghcu.digits` and `ghcu.showCalc`. Every key starts with `ghcu.`: a new key must too, so "Delete saved settings" (`src/state/savedData.ts`, linked from the sidebar, the start page and Settings > Data on this device) removes it. Usage data stays in memory only.
+- Settings are stored in `localStorage` (`ghcu.settings.v1`); the theme, color set, language, Arabic digits and the Show calculations switch in `ghcu.theme`, `ghcu.palette`, `ghcu.locale`, `ghcu.digits` and `ghcu.showCalc`; the command maker's choices in `ghcu.collector`. Every key starts with `ghcu.`: a new key must too, so "Delete saved settings" (`src/state/savedData.ts`, on the start page and Settings > Data on this device, and in the Start fresh dialog) removes it. Usage data stays in memory only.
+- **Start fresh** (`src/components/StartFreshButton.tsx`, in the sidebar, the mobile menu and on the Data page) closes everything in memory through `startFresh` in `src/state/startFresh.ts`: the store's `closeData()` (dataset, sample, GitHub data file, filters, errors and open panels) and the upload notice. New in-memory state that holds loaded data must be cleared there too. `tests/start-fresh.test.ts` guards it.
+
+### Collector scripts
+- `scripts/collect.sh` (bash) and `scripts/collect.ps1` (Windows PowerShell 5.1 and PowerShell 7) read data from GitHub with the GitHub CLI (`gh`) and save one GitHub data file. Admins run them straight from GitHub (`curl -fsSL <raw URL> | bash`, or `powershell -ExecutionPolicy Bypass -Command "& ([scriptblock]::Create((irm <raw URL>)))"`), or from a copy of the repository; the README section "Collect more data from GitHub" is their guide. Keep the README, `--help` and `--list-sources` in step.
+- Both scripts must keep working when they do not come from a file. Bash reads `collect.sh` from its input, so nothing may read that input before `main` runs; answers come from the terminal through `use_terminal_for_answers`. Keep `main; exit` as one line at the very end, so a cut-off download never runs and bash reads no more commands from the terminal after `main`. `collect.ps1` runs as a script block: `$PSScriptRoot` is empty, `$script:` is not the scope of the parameters (read them through `$script:OptionValues`), and `exit` ends the whole process, so the command starts a new `powershell` process. `tests/collector.test.ts` checks both ways.
+- They only read. Send only GET requests and GraphQL queries, with one exception: the `usage-report` source may POST to the enterprise usage reports endpoint to ask GitHub to make an AI usage report, the same as Get usage report on the billing page (`tests/collector.test.ts` checks this). Never change anything else on GitHub, and never print, save or ask for a token. They talk only to the GitHub host and the report download links it returns.
+- A GitHub data file with `usage-report` records is a complete report on its own: `routeUploads` in `src/pages/data/uploads.ts` loads its CSV parts as the usage data when no usage CSV is in the same batch. A usage CSV in the batch always wins.
+- The command maker (`src/lib/collection/command.ts`, shown by `src/pages/data/CollectorCommand.tsx` on the start page and the Data page) must only offer options that both scripts accept. Keep it in step with the options of the scripts. Its command gets the scripts of the commit the app was built from (`COLLECTOR_SCRIPT_SOURCE`, from `BUILD_INFO`), or of `main` for a build made on a computer, so the file always fits the app. Only names and hosts from a safe set of characters reach the command.
+- Keep both scripts in step: the same options, sources, requests in the same order, jq filters, messages and records. `tests/collector.test.ts` runs both against the made-up GitHub in `tests/collectorMock.ts` and checks that they write the same data.
+- Keep only the fields the app needs. The jq filters (`SEAT_FILTER`, `AUDIT_FILTER` and the others, `$script:SeatFilter` and so on in PowerShell) leave out names, emails, avatars, locations and user agents.
+- The file format is `github-copilot-usage-lens-data`, version 1 (`COLLECTION_FORMAT` and `COLLECTION_VERSION` in `src/lib/collection/types.ts`, `FORMAT_VERSION` in both scripts). New fields and new kinds need no new version: the reader skips kinds it does not know. Raise the version in all three places only when older apps would read the file wrong.
+- A source that cannot be read must not stop the run. The script writes its result line and goes on, and the app shows what is missing instead of guessing (for example, members without a seat are not counted when the member list is incomplete).
+- `collect.sh` must run on bash 3.2 (the macOS default) with tools that macOS and Linux both have: no associative arrays, `mapfile`, `${name,,}`, GNU-only options or `date -d`, and no `set -u` (empty arrays fail with it in bash 3.2).
+- `collect.ps1` must use ASCII characters only (Windows PowerShell 5.1 reads a file without a byte order mark in the local code page) and must keep working with Windows line ends. `.gitattributes` keeps `*.sh` files with Unix line ends.
 
 ## How to add things
 
@@ -130,6 +153,7 @@ Pages: Overview, Usage and pool, Users, Segments, Models, Efficiency, Organizati
 - **A number:** compute it in `src/lib/analytics/` (pure, tested), add its doc, show it with `CalcInfo`, translate the label.
 - **A recommendation:** add it in `src/lib/analytics/recommendations.ts` with evidence, actions, audience, confidence, saving and official links; savings must follow the pool rules.
 - **A model price:** update `PRICE_CARD` and `CARD_AS_OF` in `src/lib/pricing/card.ts`, then run `npm run check:prices`.
+- **A collector source:** in `scripts/collect.sh`, add it to `ALL_SOURCES`, `show_sources`, `needed_scopes` and `collect_enterprise` or `collect_organization`, with a jq filter that keeps only the needed fields. Do the same in `scripts/collect.ps1` (`$script:AllSources`, `$script:SourceTable`, `Get-NeededScopes`, `Read-Enterprise` or `Read-Organization`). Add the route to `tests/collectorMock.ts`, read the new kind in `src/lib/collection/read.ts`, use it in `derive.ts` with tests, and add a row to the sources table in the README.
 
 ## Before you finish
 

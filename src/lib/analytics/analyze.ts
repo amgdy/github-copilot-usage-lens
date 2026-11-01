@@ -1,4 +1,5 @@
 import { t } from '../../i18n/core.ts';
+import type { GitHubData } from '../collection/derive';
 import type { ModelTable } from '../pricing/models';
 import type { DataStore } from '../types';
 import { aggregate, quickTotals, type Aggregates, type QuickTotals } from './aggregate';
@@ -6,6 +7,7 @@ import { findAnomalyDays, weekOverWeek, type AnomalyDay, type Trend } from './an
 import { buildAutoRates, summarizeAuto, type AutoRates, type AutoSummary } from './autoDiscount';
 import { dataCoverage, type DataCoverage } from './coverage';
 import { activeBaseFilterCount, andMasks, buildMask, hasPostFilters, type Filters } from './filters';
+import { withGitHubBudget, type BudgetSource } from './githubBudget';
 import { buildLicenseReport, lastUsageDays, type LicenseReport } from '../licenses/insights';
 import { DEFAULT_LEVERS, computeLevers, type LeverContext, type LeverResult } from './levers';
 import { buildPool, type PoolSummary } from './pool';
@@ -22,6 +24,8 @@ export interface AnalysisInput {
   models: ModelTable;
   filters: Filters;
   settings: Settings;
+  /** What the GitHub data file of the collector scripts adds. Leave it out for the sample report. */
+  github?: GitHubData | null;
 }
 
 export interface PreviousPeriod {
@@ -68,12 +72,16 @@ export interface Analysis {
   previous: PreviousPeriod | null;
   recs: Recommendation[];
   headline: Headline;
+  /** Where the monthly budget of `pool.budget` comes from: Settings, the GitHub data file, or nowhere. */
+  budgetSource: BudgetSource;
   /** Wall-clock time of this analysis in milliseconds. */
   ms: number;
 }
 
 export function analyze(input: AnalysisInput): Analysis {
-  const { store, prep: prepared, models, filters: filters, settings } = input;
+  const { store, prep: prepared, models, filters: filters } = input;
+  const github = input.github ?? null;
+  const { settings, budgetSource } = withGitHubBudget(input.settings, github);
   const startMs = performance.now();
   const nUsers = store.dicts.user.values.length;
   const start = Math.max(filters.dateFrom ?? store.minDay, store.minDay);
@@ -135,7 +143,7 @@ export function analyze(input: AnalysisInput): Analysis {
   }
 
   const auto = summarizeAuto(aggregates, settings, coverage.models, autoRates);
-  const recommendationContext = { store, models, agg: aggregates, mask, users, pool, seats, levers, anomalies, trend, settings, narrowed, coverage, auto };
+  const recommendationContext = { store, models, agg: aggregates, mask, users, pool, seats, levers, anomalies, trend, settings, narrowed, coverage, auto, github, budgetSource };
   const recommendations = aggregates.totals.rows > 0 ? buildRecommendations(recommendationContext) : [];
   const headline: Headline =
     aggregates.totals.rows > 0
@@ -164,6 +172,7 @@ export function analyze(input: AnalysisInput): Analysis {
     previous,
     recs: recommendations,
     headline,
+    budgetSource,
     ms: performance.now() - startMs,
   };
 }

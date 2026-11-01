@@ -254,3 +254,27 @@ describe('classifyUpload: other files', () => {
     }
   });
 });
+
+describe('classifyUpload: GitHub data files', () => {
+  const headerLine = JSON.stringify({ kind: 'header', format: 'github-copilot-usage-lens-data', version: 1, scope: 'enterprise', startedAt: '2026-10-02T08:00:00Z' });
+  const seatLine = JSON.stringify({ kind: 'seat', scope: 'enterprise', target: 'octocorp', record: { assignee: { login: 'user001' }, plan_type: 'business', last_activity_at: null } });
+
+  it('knows the file by its header line, with and without a BOM', () => {
+    expect(classifyUpload(`${headerLine}\n`)).toBe('collection');
+    expect(classifyUpload(`\uFEFF${headerLine}\n${seatLine}\n`, 'usage-lens-data.ndjson')).toBe('collection');
+    expect(classifyUpload(`${headerLine}\r\n${seatLine}\r\n`, 'data.txt')).toBe('collection');
+  });
+
+  it('never takes the seat records that follow the header for a license file', () => {
+    const text = [headerLine, ...Array.from({ length: 200 }, () => seatLine)].join('\n');
+    expect(classifyUpload(text)).toBe('collection');
+    expect(classifyUpload(text, 'seats.json')).toBe('collection');
+  });
+
+  it('needs both the header kind and the format on the first line', () => {
+    expect(classifyUpload(JSON.stringify({ kind: 'header', format: 'something-else' }))).toBe('unknown');
+    expect(classifyUpload(JSON.stringify({ format: 'github-copilot-usage-lens-data' }))).toBe('unknown');
+    expect(classifyUpload(`${seatLine}\n${headerLine}\n`)).not.toBe('collection');
+    expect(classifyUpload(`"date","username"\n${headerLine}\n`)).not.toBe('collection');
+  });
+});

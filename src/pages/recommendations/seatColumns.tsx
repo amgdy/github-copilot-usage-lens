@@ -44,6 +44,7 @@ const usageColumn = (): Column<SeatRow> => ({
 
 const valueColumn = (header: string, csvHeader: string, hint: string, calc: string): Column<SeatRow> => ({
   key: 'value',
+  strong: true,
   header,
   hint,
   calc,

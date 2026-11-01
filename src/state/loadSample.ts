@@ -25,10 +25,13 @@ export async function loadSample(): Promise<boolean> {
   setLoading({ label: t('Making a sample report…'), fraction: 0, rows: 0 });
   try {
     await new Promise<void>((resolve) => setTimeout(resolve, 0));
-    const { generateDemo } = await import('../lib/demo/generate');
+    const [{ generateDemo }, { sampleCollection }] = await Promise.all([import('../lib/demo/generate'), import('../lib/demo/github')]);
     const { csv } = generateDemo(sampleRange());
     // Empty vars make the top bar translate the name when the language changes.
-    return await loadSources([{ name: SAMPLE_FILE_NAME, data: csv }], { text: msg('Sample report (made-up data)'), vars: {} }, { sample: true });
+    return await loadSources([{ name: SAMPLE_FILE_NAME, data: csv }], { text: msg('Sample report (made-up data)'), vars: {} }, {
+      sample: true,
+      sampleGitHub: (store) => sampleCollection(store),
+    });
   } catch (error) {
     setError(error instanceof Error ? error.message : String(error));
     setLoading(null);

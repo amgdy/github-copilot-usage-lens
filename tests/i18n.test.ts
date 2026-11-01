@@ -42,6 +42,7 @@ const ENFORCED = [
   'lib/analytics/taxonomy.ts',
   'lib/analytics/',
   'lib/licenses/',
+  'lib/collection/',
   'lib/export/',
   'lib/pricing/card.ts',
   'lib/metrics/settingRefs.ts',

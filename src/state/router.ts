@@ -9,6 +9,7 @@ export type PageId = AdvicePageId | 'licenses';
 export const PAGE_IDS: PageId[] = [
   'overview',
   'spend',
+  'budgets',
   'users',
   'segments',
   'models',

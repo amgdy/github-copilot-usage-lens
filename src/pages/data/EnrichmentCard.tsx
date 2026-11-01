@@ -8,7 +8,7 @@ interface Source {
   detail: string;
   /** How to get it, in one plain sentence. */
   action: string;
-  priority?: 'recommended' | 'advanced';
+  priority?: 'recommended' | 'advanced' | 'script';
   used: boolean;
   links: LinkId[];
 }
@@ -24,6 +24,14 @@ const SOURCES: Source[] = [
     links: ['activityReport'],
   },
   {
+    title: msg('GitHub data file from the collector script'),
+    detail: msg('Budgets, seats, members, the whole bill, activity with code completions and seat changes, in one file. It makes the pool, budget and seat findings more exact and adds more recommendations.'),
+    action: msg('Run the collector script with the command from the GitHub data file card, then load its file.'),
+    priority: 'script',
+    used: true,
+    links: ['budgetsApi', 'billingUsageApi', 'usageMetricsApi', 'auditLogs'],
+  },
+  {
     title: msg('Seat list from the GitHub REST API'),
     detail: msg('Advanced option for plan, seat start and pending-cancellation details, or repeatable exports. Its activity dates still have the same 90-day limit.'),
     action: msg('Save every page as JSON with the GitHub CLI, then load it with the usage report.'),
@@ -32,46 +40,46 @@ const SOURCES: Source[] = [
     links: ['seatsApi'],
   },
   {
+    title: msg('Budgets API'),
+    detail: msg('The budgets set for AI credits and how much of each is spent.'),
+    action: msg('Read from the GitHub data file. The Budgets page lists each budget, and the AI credit budget becomes the monthly budget when Settings has none.'),
+    used: true,
+    links: ['budgetsApi'],
+  },
+  {
+    title: msg('Billing usage API'),
+    detail: msg('What GitHub billed each month, seats included.'),
+    action: msg('Read from the GitHub data file. Usage and pool shows the whole bill, and the Data page checks the usage report against it.'),
+    used: true,
+    links: ['billingUsageApi'],
+  },
+  {
     title: msg('Usage metrics API'),
     detail: msg('Daily use by editor, language and feature. Useful to see how people work with GitHub Copilot, not what it costs.'),
-    action: msg('Not read by this app yet. Use it next to this report.'),
-    used: false,
+    action: msg('Read from the GitHub data file. Licenses shows who is active, including people who use only code completions.'),
+    used: true,
     links: ['usageMetricsApi', 'usageMetricsData'],
+  },
+  {
+    title: msg('Audit log'),
+    detail: msg('When seats were added or removed, and when plans, budgets and policies changed.'),
+    action: msg('Read from the GitHub data file. Licenses shows the seats added and removed each month.'),
+    used: true,
+    links: ['auditLogs'],
   },
   {
     title: msg('Team members API'),
     detail: msg('Which team each user is in. Useful to compare usage by team.'),
-    action: msg('Not read by this app yet. Cost centers in the usage report give a similar view.'),
-    used: false,
+    action: msg('Read from the GitHub data file when the script runs with --teams. The Organization page then groups usage by team.'),
+    used: true,
     links: ['teamMembersApi'],
   },
   {
     title: msg('Cost centers API'),
     detail: msg('All cost centers and their members, including people with no usage yet.'),
-    action: msg('Not read by this app yet. The usage report already names the cost center of each row.'),
-    used: false,
+    action: msg('Read from the GitHub data file. The Budgets page uses their user, team and organization assignments to find the applicable limits and shows their included credit pool controls.'),
+    used: true,
     links: ['costCentersApi'],
-  },
-  {
-    title: msg('Billing usage API'),
-    detail: msg('The same usage as the report file, by API. Useful to download it on a schedule.'),
-    action: msg('Not read by this app yet. Download the usage report from your billing settings instead.'),
-    used: false,
-    links: ['billingUsageApi'],
-  },
-  {
-    title: msg('Budgets API'),
-    detail: msg('The budgets set for AI credits and how much of each is spent.'),
-    action: msg('Not read by this app yet. Set budgets in your billing settings.'),
-    used: false,
-    links: ['budgetsApi'],
-  },
-  {
-    title: msg('Audit log'),
-    detail: msg('When seats were added or removed, and by whom.'),
-    action: msg('Not read by this app yet. Search the audit log for GitHub Copilot events.'),
-    used: false,
-    links: ['auditLogs'],
   },
 ];
 
@@ -86,6 +94,7 @@ export function EnrichmentCard() {
               <span className="text-sm font-medium text-fg">{t(source.title)}</span>
               {source.priority === 'recommended' ? <Badge tone="good">{t('Recommended for most admins')}</Badge> : null}
               {source.priority === 'advanced' ? <Badge>{t('Advanced')}</Badge> : null}
+              {source.priority === 'script' ? <Badge>{t('Needs the GitHub CLI')}</Badge> : null}
               {source.used ? <Badge tone="good">{t('Read by this app')}</Badge> : <Badge>{t('Not read yet')}</Badge>}
             </div>
             <p className="mt-1 text-xs text-fg-muted">{t(source.detail)}</p>

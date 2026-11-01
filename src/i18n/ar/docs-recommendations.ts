@@ -1323,6 +1323,101 @@ const arabic: Dict = {
   'The Data page shows the checks in full.': 'تعرض صفحة «البيانات» الفحوص كاملة.',
   'A report of 9 days has $120 of usage on a model that is not in the price card. The notes read "Only 9 days of data: projections and trends are indicative.", "$120 is on models that are not in the built-in price card. What-if savings exclude them; add overrides in Settings." and the line about AI-credit usage only.':
     'تقرير مدته 9 أيام فيه $120 من الاستخدام على نموذج غير موجود في قائمة الأسعار. وتكون الملاحظات «9 أيام فقط من البيانات: التوقعات والاتجاهات استرشادية.» و«$120 على نماذج غير موجودة في قائمة الأسعار المدمجة. تستثنيها وفورات "ماذا لو"؛ أضف تعديلات الأسعار في الإعدادات.» والسطر الخاص باستخدام أرصدة الذكاء الاصطناعي فقط.',
+
+  // Recommendations that need the GitHub data file: a budget that only sends alerts
+  'A budget that only sends alerts': 'ميزانية ترسل تنبيهات فقط',
+  'Appears when the GitHub data file shows that the AI credit budget of the enterprise or organization does not stop usage, and that budget is used up, nearly used up or on track to run out. GitHub then keeps billing after the limit.':
+    'تظهر عندما يبيّن ملف بيانات GitHub أن ميزانية أرصدة الذكاء الاصطناعي لـ Enterprise أو المؤسسة لا توقف الاستخدام، وأن هذه الميزانية نفدت أو كادت تنفد أو في طريقها إلى النفاد. عندها يواصل GitHub الفوترة بعد الحد.',
+  'Share used = amount used ÷ budget, as GitHub showed it on the day the data was collected': 'الحصة المستخدمة = المبلغ المستخدم ÷ الميزانية، كما أظهرها GitHub يوم جمع البيانات',
+  'It needs a GitHub data file from the collector scripts and the whole-organization view. The budget is the AI credit budget of the same enterprise, or of the one organization in an organization file. When several apply, the smallest one is used.':
+    'تحتاج إلى ملف بيانات GitHub من سكربتات جمع البيانات وإلى عرض المؤسسة كاملة. والميزانية هي ميزانية أرصدة الذكاء الاصطناعي لـ Enterprise نفسها، أو للمؤسسة الوحيدة في ملف المؤسسة. وإذا انطبقت عدة ميزانيات، تُستخدم أصغرها.',
+  'It reads the amount used from GitHub on the day the data was collected. When the Monthly budget of the analysis has the same amount, it also uses the latest month of the report: the share used so far, the projected share and the day the budget runs out.':
+    'تقرأ المبلغ المستخدم من GitHub يوم جمع البيانات. وعندما تكون للميزانية الشهرية في التحليل القيمة نفسها، تستخدم أيضًا آخر شهر في التقرير: الحصة المستخدمة حتى الآن، والحصة المتوقعة، واليوم الذي تنفد فيه الميزانية.',
+  'It appears when the budget does not stop usage and the budget is at least 80% used, at GitHub or in the report, or the report projects that it runs out.':
+    'تظهر عندما لا توقف الميزانية الاستخدام ويكون 80% منها على الأقل مستخدمًا، في GitHub أو في التقرير، أو عندما يتوقع التقرير نفادها.',
+  'Severity is High when the budget is used up or projected to run out, and Medium when it is only 80% used or more.':
+    'تكون الخطورة «مرتفع» عندما تنفد الميزانية أو يُتوقع نفادها، و«متوسط» عندما يكون المستخدم منها 80% أو أكثر فقط.',
+  'The evidence says whether budget alerts are on. Confidence is High.': 'تذكر الأدلة هل تنبيهات الميزانية مفعّلة. ومستوى الثقة «مرتفع».',
+  'Without the option "Stop usage when budget limit is reached", a budget only sends alerts at 75%, 90% and 100%. GitHub keeps billing after that.':
+    'دون الخيار «Stop usage when budget limit is reached» ترسل الميزانية تنبيهات فقط عند 75% و90% و100%. ويواصل GitHub الفوترة بعد ذلك.',
+  'The budget counts billed usage only. Included credits are used first and do not count against it.': 'تحتسب الميزانية الاستخدام المدفوع إضافيًا فقط. تُستخدم الأرصدة المشمولة أولًا ولا تُحتسب منها.',
+  'The amount used is from the day the data was collected. Usage keeps growing until the end of the month.': 'المبلغ المستخدم هو قيمته يوم جمع البيانات. ويستمر الاستخدام في الزيادة حتى نهاية الشهر.',
+  'A budget for all of GitHub Copilot is not used here, because it may cover more than AI credits.': 'لا تُستخدم هنا ميزانية GitHub Copilot كله، لأنها قد تشمل أكثر من أرصدة الذكاء الاصطناعي.',
+  'The enterprise has a $500 budget for AI credits that only sends alerts. On October 20 GitHub showed $450 used, which is 90%. The title reads "The $500 budget only sends alerts, so the bill can go past it" and severity is Medium. When the report projects 130% for the month, severity is High.':
+    'لدى Enterprise ميزانية قدرها $500 لأرصدة الذكاء الاصطناعي ترسل تنبيهات فقط. في 20 أكتوبر أظهر GitHub استخدام $450، أي 90%. ويكون العنوان «ميزانية $500 ترسل تنبيهات فقط، لذا قد تتجاوزها الفاتورة» والخطورة «متوسط». وعندما يتوقع التقرير 130% للشهر، تكون الخطورة «مرتفع».',
+
+  // A budget that stops usage is running out
+  'A budget that stops usage is running out': 'ميزانية توقف الاستخدام توشك على النفاد',
+  'Appears when the GitHub data file shows that the AI credit budget of the enterprise or organization stops usage, and that budget is used up or on track to run out. People then cannot use features that cost AI credits until the next billing cycle or until the budget is raised.':
+    'تظهر عندما يبيّن ملف بيانات GitHub أن ميزانية أرصدة الذكاء الاصطناعي لـ Enterprise أو المؤسسة توقف الاستخدام، وأن هذه الميزانية نفدت أو في طريقها إلى النفاد. عندها لا يستطيع الناس استخدام الميزات التي تكلّف أرصدة الذكاء الاصطناعي حتى دورة الفوترة التالية أو حتى رفع الميزانية.',
+  'It uses the same budget and the same figures as A budget that only sends alerts.': 'تستخدم الميزانية نفسها والأرقام نفسها التي تستخدمها «ميزانية ترسل تنبيهات فقط».',
+  'It appears when the budget stops usage and is used up, at GitHub or in the latest month of the report, or the report projects that it runs out.':
+    'تظهر عندما توقف الميزانية الاستخدام وتكون قد نفدت، في GitHub أو في آخر شهر من التقرير، أو عندما يتوقع التقرير نفادها.',
+  'Severity is High and confidence is High.': 'الخطورة «مرتفع» ومستوى الثقة «مرتفع».',
+  'The amount used is from the day the data was collected. The projection comes from the latest month of the report.': 'المبلغ المستخدم هو قيمته يوم جمع البيانات. ويأتي التوقع من آخر شهر في التقرير.',
+  'Raising the budget lets people work again right away. Otherwise usage comes back at the start of the next billing cycle.':
+    'رفع الميزانية يتيح للناس العمل من جديد على الفور. وإلا فيعود الاستخدام في بداية دورة الفوترة التالية.',
+  'The organization has a $200 budget for AI credits that stops usage. On October 25 GitHub showed $200 used. The title reads "Usage that costs AI credits stops when the $200 budget runs out" and severity is High.':
+    'لدى المؤسسة ميزانية قدرها $200 لأرصدة الذكاء الاصطناعي توقف الاستخدام. في 25 أكتوبر أظهر GitHub استخدام $200. ويكون العنوان «يتوقف الاستخدام الذي يكلّف أرصدة الذكاء الاصطناعي عند نفاد ميزانية $200» والخطورة «مرتفع».',
+
+  // Users who reached their budget
+  'Users who reached their budget': 'مستخدمون بلغوا ميزانيتهم',
+  'Appears when the GitHub data file shows people who used up a budget for users. Budgets for users always stop usage, so these people cannot use features that cost AI credits until the next billing cycle or until their budget is raised.':
+    'تظهر عندما يبيّن ملف بيانات GitHub أشخاصًا استنفدوا ميزانية للمستخدمين. وميزانيات المستخدمين توقف الاستخدام دائمًا، لذا لا يستطيع هؤلاء استخدام الميزات التي تكلّف أرصدة الذكاء الاصطناعي حتى دورة الفوترة التالية أو حتى رفع ميزانيتهم.',
+  'Reached = amount used ≥ budget of the user, as GitHub showed it on the day the data was collected': 'بلغ الميزانية = المبلغ المستخدم ≥ ميزانية المستخدم، كما أظهرها GitHub يوم جمع البيانات',
+  'It reads the GitHub Copilot budgets for users in the GitHub data file: budgets for one user, and the amount of each user in a budget that applies to each user.':
+    'تقرأ ميزانيات GitHub Copilot للمستخدمين في ملف بيانات GitHub: الميزانيات الخاصة بمستخدم واحد، ومبلغ كل مستخدم في ميزانية تنطبق على كل مستخدم.',
+  'A user is listed when the amount used reaches their applicable user limit. An individual limit takes priority, then a cost center default, then the universal default. Broader user limits are replaced, not added.':
+    'يُدرج المستخدم عندما يبلغ المبلغ المستخدَم حد المستخدم الساري. الأولوية للحد الفردي، ثم حد مركز التكلفة الافتراضي، ثم الحد العام الافتراضي. تُستبدل الحدود الأوسع ولا تُجمع.',
+  'In a filtered view only users who are in that view are listed.': 'في العرض المصفّى يُدرج فقط المستخدمون الموجودون في ذلك العرض.',
+  'The evidence shows up to 5 users, the most used first. The card names up to 12 users who are in the report, and the count includes all of them.':
+    'تعرض الأدلة 5 مستخدمين على الأكثر، بدءًا بالأكثر استخدامًا. وتذكر البطاقة 12 مستخدمًا على الأكثر من الموجودين في التقرير، ويشمل العدد جميعهم.',
+  'Severity is Medium and confidence is High.': 'الخطورة «متوسط» ومستوى الثقة «مرتفع».',
+  'The amounts are from the day the data was collected. Budgets start again at the start of each billing cycle.': 'المبالغ هي قيمها يوم جمع البيانات. وتبدأ الميزانيات من جديد في بداية كل دورة فوترة.',
+  'Budgets for users count all usage of AI credits, including usage covered by included credits.': 'تحتسب ميزانيات المستخدمين كل استخدام لأرصدة الذكاء الاصطناعي، بما فيه الاستخدام المغطى من الأرصدة المشمولة.',
+  'People who have no row in the usage report are counted but cannot be opened on the Users page.': 'يُحتسب الأشخاص الذين ليس لهم صف في تقرير الاستخدام، لكن لا يمكن فتحهم في صفحة المستخدمين.',
+  'A budget of $20 applies to each user. On October 20 GitHub showed that one person used $21 and another used $20. The title reads "2 users reached their budget and cannot use AI credits".':
+    'تنطبق ميزانية قدرها $20 على كل مستخدم. في 20 أكتوبر أظهر GitHub أن شخصًا استخدم $21 وآخر استخدم $20. ويكون العنوان «مستخدمان بلغا ميزانيتهما ولا يمكنهما استخدام أرصدة الذكاء الاصطناعي».',
+
+  // Usage report and GitHub billing do not match
+  'Usage report and GitHub billing do not match': 'تقرير الاستخدام وفوترة GitHub غير متطابقين',
+  'Appears when a full month of the usage report has a different usage or billed amount than the AI credit billing of GitHub in the GitHub data file. Figures from the report may then be off.':
+    'تظهر عندما يختلف الاستخدام أو المبلغ المدفوع إضافيًا في شهر كامل من تقرير الاستخدام عن فوترة GitHub لأرصدة الذكاء الاصطناعي في ملف بيانات GitHub. عندها قد تكون أرقام التقرير غير دقيقة.',
+  'Gap = amount at GitHub − amount in the report, for each full month': 'الفرق = المبلغ في GitHub − المبلغ في التقرير، لكل شهر كامل',
+  'The AI credit billing of a month is the AI credit usage report of GitHub billing, or else the AI credit lines of the billing usage summary.':
+    'فوترة أرصدة الذكاء الاصطناعي في شهر ما هي تقرير استخدام أرصدة الذكاء الاصطناعي في فوترة GitHub، وإلا فبنود أرصدة الذكاء الاصطناعي في ملخص استخدام الفوترة.',
+  'An organization file is compared with the report rows of its organizations only. If none match, it is not compared with every row. An enterprise file is compared with every row.':
+    'يُقارن ملف المؤسسة بصفوف التقرير الخاصة بمؤسساته فقط. وإذا لم تطابق أي مؤسسة، فلا يُقارن بكل الصفوف. ويُقارن ملف Enterprise بكل الصفوف.',
+  'Months that were not over when the data was collected, months the report covers only in part and months the report does not cover are left out. A report may miss up to 3 days at the start or end of a month and still count as covering it.':
+    'تُستبعد الأشهر التي لم تنتهِ عند جمع البيانات، والأشهر التي يغطيها التقرير جزئيًا فقط، والأشهر التي لا يغطيها التقرير. ويمكن أن تنقص التقرير 3 أيام على الأكثر في بداية الشهر أو نهايته ويُعد مع ذلك مغطيًا له.',
+  'Usage is compared first, then the billed amount. Amounts within 2%, or within $1, count as the same.': 'يُقارن الاستخدام أولًا، ثم المبلغ المدفوع إضافيًا. وتُعد المبالغ التي لا يتجاوز فرقها 2%، أو $1، متساوية.',
+  'Each month that differs gets an evidence line. Severity is Medium when the report has less than GitHub in any month, and Low when it only has more.':
+    'لكل شهر مختلف سطر في الأدلة. وتكون الخطورة «متوسط» عندما يكون في التقرير أقل مما في GitHub في أي شهر، و«منخفض» عندما يكون فيه أكثر فقط.',
+  'A report with less than GitHub often misses files or days. A report with more often covers more organizations than the GitHub data file.':
+    'التقرير الذي فيه أقل مما في GitHub تنقصه غالبًا ملفات أو أيام. والتقرير الذي فيه أكثر يغطي غالبًا مؤسسات أكثر من ملف بيانات GitHub.',
+  'GitHub billing is what you pay.': 'فوترة GitHub هي ما تدفعه.',
+  'The Data page shows the check of every month.': 'تعرض صفحة البيانات نتيجة المقارنة لكل شهر.',
+  'For September the report shows $9,000 of usage and GitHub billing shows $10,000. The gap of $1,000 is more than 2%, so the report has less and severity is Medium.':
+    'في سبتمبر يُظهر التقرير استخدامًا قدره $9,000 وتُظهر فوترة GitHub مبلغ $10,000. والفرق البالغ $1,000 أكبر من 2%، فيكون في التقرير أقل والخطورة «متوسط».',
+
+  // Seats for every member
+  'Seats for every member': 'تراخيص لكل الأعضاء',
+  'Appears when the GitHub data file shows organizations that give a GitHub Copilot seat to all members, and some of those seats had no activity in this billing cycle.':
+    'تظهر عندما يبيّن ملف بيانات GitHub مؤسسات تمنح ترخيص GitHub Copilot لكل الأعضاء، وبعض هذه التراخيص بلا أي نشاط في دورة الفوترة هذه.',
+  'Inactive seats = seats with no GitHub Copilot activity in this billing cycle, as GitHub counts them': 'التراخيص غير النشطة = التراخيص التي لا نشاط لها في GitHub Copilot خلال دورة الفوترة هذه، كما يعدّها GitHub',
+  'It reads the seat summary of each organization in the GitHub data file: how seats are given, all seats and the seats with no activity in this billing cycle.':
+    'تقرأ ملخص التراخيص لكل مؤسسة في ملف بيانات GitHub: طريقة منح التراخيص، وكل التراخيص، والتراخيص التي لا نشاط لها في دورة الفوترة هذه.',
+  'An organization is listed when it gives seats to all members and has at least one inactive seat.': 'تُدرج المؤسسة عندما تمنح التراخيص لكل الأعضاء ويكون لديها ترخيص واحد غير نشط على الأقل.',
+  'It needs data collected on day 15 of the month or later, because early in the billing cycle many seats have no activity yet.':
+    'تحتاج إلى بيانات جُمعت في اليوم 15 من الشهر أو بعده، لأن كثيرًا من التراخيص لا يكون لها نشاط بعد في أول دورة الفوترة.',
+  'Severity is Medium when at least 5 seats, and at least 20% of the seats of those organizations, are inactive. Otherwise it is Low.':
+    'تكون الخطورة «متوسط» عندما تكون 5 تراخيص على الأقل، و20% على الأقل من تراخيص تلك المؤسسات، غير نشطة. وإلا فتكون «منخفض».',
+  'It has no saving of its own, because it overlaps with idle seats.': 'ليس لها توفير خاص بها، لأنها تتداخل مع التراخيص الخاملة.',
+  'GitHub counts any activity, including code completions, which are not in the usage report.': 'يحتسب GitHub أي نشاط، بما فيه إكمال الكود، وهو غير موجود في تقرير الاستخدام.',
+  'The billing cycle is taken to start on the 1st of the month.': 'يُفترض أن دورة الفوترة تبدأ في اليوم الأول من الشهر.',
+  'Billing starts when a seat is given, not at first use.': 'تبدأ الفوترة عند منح الترخيص، لا عند أول استخدام.',
+  'On October 20 an organization gives seats to all 40 members, and 10 of those seats had no activity in this billing cycle. That is 25% and at least 5 seats, so severity is Medium.':
+    'في 20 أكتوبر تمنح مؤسسة تراخيص لكل أعضائها الأربعين، و10 من هذه التراخيص بلا أي نشاط في دورة الفوترة هذه. وهذا 25% و5 تراخيص على الأقل، فتكون الخطورة «متوسط».',
 };
 
 export default arabic;

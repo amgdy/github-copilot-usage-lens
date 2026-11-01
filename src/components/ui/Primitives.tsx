@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { AlertTriangle, CheckCircle2, Info, Loader2, XCircle } from 'lucide-react';
 import { cx } from './cx';
+import { Figures } from './Figure';
 import { t } from '../../i18n';
 import { useRoute } from '../../state/router';
 import { groupLabel, navItem } from '../layout/nav';
@@ -49,7 +50,11 @@ export function PageHeader({ title, description, actions }: { title: ReactNode; 
           <span>{groupLabel(navItem(page).group)}</span>
         </div>
         <h1 className="font-display text-2xl leading-tight text-fg sm:text-[28px]">{title}</h1>
-        {description ? <p className="mt-1.5 max-w-3xl wrap-anywhere text-sm text-fg-muted">{description}</p> : null}
+        {description ? (
+          <p className="mt-1.5 max-w-3xl wrap-anywhere text-sm text-fg-muted">
+            <Figures text={description} />
+          </p>
+        ) : null}
       </div>
       {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
     </div>
@@ -62,7 +67,11 @@ export function Section({ title, description, actions, children, className }: { 
       <div className="mb-2 flex flex-wrap items-end justify-between gap-2">
         <div>
           <h2 className="text-base font-semibold">{title}</h2>
-          {description ? <p className="text-xs text-fg-muted">{description}</p> : null}
+          {description ? (
+            <p className="text-xs text-fg-muted">
+              <Figures text={description} />
+            </p>
+          ) : null}
         </div>
         {actions ? <div className="flex items-center gap-2">{actions}</div> : null}
       </div>
@@ -110,7 +119,11 @@ export function Callout({ tone = 'info', title, children, className, action }: {
       <span className={cx('mt-0.5 shrink-0', TONE_TEXT[tone])}>{CALLOUT_ICON[tone]}</span>
       <div className="min-w-0 flex-1 basis-48 text-fg">
         {title ? <div className="font-semibold">{title}</div> : null}
-        {children ? <div className={cx('text-xs', title ? 'mt-0.5 text-fg-muted' : '')}>{children}</div> : null}
+        {children ? (
+          <div className={cx('text-xs', title ? 'mt-0.5 text-fg-muted' : '')}>
+            <Figures text={children} />
+          </div>
+        ) : null}
       </div>
       {action ? <div className="shrink-0">{action}</div> : null}
     </div>

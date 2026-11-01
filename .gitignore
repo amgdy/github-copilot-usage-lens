@@ -156,6 +156,9 @@ samples/
 demo-data/
 *.csv
 seats*.json
+# GitHub data files from scripts/collect.sh and scripts/collect.ps1 hold logins and activity.
+usage-lens-data*.ndjson
+usage-lens-data*.ndjson.gz
 
 # Local-only project notes
 docs/IMPLEMENTATION-REPORT.md

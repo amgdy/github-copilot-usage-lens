@@ -71,8 +71,8 @@ const arabic: Dict = {
   'How much of the monthly budget for the billed amount the latest month has used.':
     'كم استهلك آخر شهر من الميزانية الشهرية المخصصة للمبلغ المدفوع إضافيًا.',
   'Budget used = billed in the latest month ÷ monthly budget': 'نسبة استخدام الميزانية = المدفوع إضافيًا في آخر شهر ÷ الميزانية الشهرية',
-  'The monthly budget is the amount you enter in Settings. Only the billed amount counts against it. Seat fees are not part of it.':
-    'الميزانية الشهرية هي المبلغ الذي تُدخله في الإعدادات. ولا يُحتسب منها إلا المبلغ المدفوع إضافيًا، فرسوم التراخيص ليست جزءًا منها.',
+  'The monthly budget is the amount you enter in Settings. When Settings has none, it is the AI credit budget of your enterprise or organization from the GitHub data file. Only the billed amount counts against it. Seat fees are not part of it.':
+    'الميزانية الشهرية هي المبلغ الذي تُدخله في الإعدادات. وإن لم تُحدَّد فيها، فهي ميزانية أرصدة الذكاء الاصطناعي لـ Enterprise أو المؤسسة من ملف بيانات GitHub. ولا يُحتسب منها إلا المبلغ المدفوع إضافيًا، فرسوم التراخيص ليست جزءًا منها.',
   'The latest month is the last month with usage rows in the selected period. A month in progress counts what was billed so far, and a month cut by the selected dates counts only what was billed inside them.':
     'آخر شهر هو آخر شهر فيه صفوف استخدام في الفترة المحددة. يحتسب الشهر الجاري ما دُفع إضافيًا حتى الآن، ويحتسب الشهر الذي تقطعه التواريخ المحددة ما دُفع داخلها فقط.',
   'The bar is green below 80%, amber from 80% and red from 100%. The color follows the worse of the share used now and the share projected for the end of the month.':

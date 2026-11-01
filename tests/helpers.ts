@@ -3,6 +3,7 @@ import { analyze, type Analysis } from '../src/lib/analytics/analyze';
 import { emptyFilters, type Filters } from '../src/lib/analytics/filters';
 import { prepareStore, type Prepared } from '../src/lib/analytics/prepare';
 import { mergeSettings, type Settings } from '../src/lib/analytics/settings';
+import { deriveGitHub, type Collection } from '../src/lib/collection';
 import { buildStore, type TextSource } from '../src/lib/csv/ingest';
 import { generateDemo, type DemoOptions, type DemoResult } from '../src/lib/demo/generate';
 import { buildModelTable, type ModelTable } from '../src/lib/pricing/models';
@@ -24,16 +25,18 @@ export interface Pipeline {
   analysis: Analysis;
 }
 
-/** Runs prepare + model table + analyze on an already ingested store. */
+/** Runs prepare + model table + analyze on an already ingested store, with the GitHub data file when one is given. */
 export function pipelineOf(
   store: DataStore,
-  options: { filters?: Partial<Filters>; settings?: Partial<Settings> } = {},
+  options: { filters?: Partial<Filters>; settings?: Partial<Settings>; collection?: Collection } = {},
 ): Pipeline {
   const prepared = prepareStore(store);
   const settings = mergeSettings(options.settings ?? {});
   const models = buildModelTable(store, settings.modelOverrides);
   const filters = { ...emptyFilters(), ...options.filters };
-  const run = (activeFilters: Filters = filters, activeSettings: Settings = settings): Analysis => analyze({ store, prep: prepared, models, filters: activeFilters, settings: activeSettings });
+  const github = options.collection ? deriveGitHub(options.collection, store) : null;
+  const run = (activeFilters: Filters = filters, activeSettings: Settings = settings): Analysis =>
+    analyze({ store, prep: prepared, models, filters: activeFilters, settings: activeSettings, github });
   return { store, prep: prepared, models, settings, filters, run, analysis: run() };
 }
 

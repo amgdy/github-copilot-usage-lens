@@ -184,18 +184,29 @@ function collect(value: unknown, depth: number, context: Ctx): void {
   addSeat(value, context);
 }
 
+const emptySeats = (): JsonSeats => ({
+  records: [],
+  skipped: 0,
+  errors: [],
+  garbage: 0,
+  truncated: false,
+  stats: newReadStats(),
+  seatShaped: false,
+  capped: false,
+});
+
+/** Reads seats from values that were already parsed from JSON, such as the seat records of a GitHub data file. Never throws. */
+export function seatsFromValues(values: readonly unknown[], out: JsonSeats = emptySeats()): JsonSeats {
+  const context: Ctx = { out };
+  for (const value of values) collect(value, 0, context);
+  // When any record carries activity keys, apply that source to the whole response, including seats with blank dates.
+  if (out.records.some((record) => record.source === 'api')) for (const record of out.records) record.source = 'api';
+  return out;
+}
+
 /** Reads seats from JSON text in any of the shapes the API and the gh CLI produce. Never throws. */
 export function parseSeatsJson(text: string): JsonSeats {
-  const out: JsonSeats = {
-    records: [],
-    skipped: 0,
-    errors: [],
-    garbage: 0,
-    truncated: false,
-    stats: newReadStats(),
-    seatShaped: false,
-    capped: false,
-  };
+  const out = emptySeats();
   let values: unknown[] | null = null;
   try {
     values = [JSON.parse(text)];
@@ -205,9 +216,5 @@ export function parseSeatsJson(text: string): JsonSeats {
     out.garbage = scan.garbage;
     out.truncated = scan.truncated;
   }
-  const context: Ctx = { out };
-  for (const value of values) collect(value, 0, context);
-  // When any record carries activity keys, apply that source to the whole response, including seats with blank dates.
-  if (out.records.some((record) => record.source === 'api')) for (const record of out.records) record.source = 'api';
-  return out;
+  return seatsFromValues(values, out);
 }

@@ -6,6 +6,7 @@ import { fmtDay } from '../../lib/utils/date';
 import { fmtUSD } from '../../lib/utils/format';
 import { useAnalysis } from '../../state/analysis';
 import { navigate } from '../../state/router';
+import { budgetName, collectedDay } from '../githubText';
 import { clearNarrowing } from '../shared';
 import { billedProjectionKnown, budgetTone, fmtBudgetPct } from './helpers';
 
@@ -26,6 +27,17 @@ function Stat({ label, value, sub, tone, calc }: { label: string; value: string;
 }
 
 function BudgetNote() {
+  const { analysis, github } = useAnalysis();
+  const fromGitHub = analysis.budgetSource === 'github' ? github?.budget : null;
+  if (github && fromGitHub) {
+    return (
+      <p className="text-xs text-fg-subtle">
+        {t('This is the AI credit budget {name} at GitHub, from the GitHub data file collected on {day}.', { name: budgetName(fromGitHub), day: collectedDay(github.collection.header) })}{' '}
+        {fromGitHub.stopsUsage ? t('GitHub stops usage that costs AI credits once it is used up.') : t('GitHub only sends alerts once it is used up, and keeps billing.')}{' '}
+        {t('A monthly budget set in Settings takes its place in this app.')}
+      </p>
+    );
+  }
   return (
     <p className="text-xs text-fg-subtle">
       {t(
@@ -150,6 +162,7 @@ export function BudgetCard() {
   const budget = pool.budget;
   const latest = pool.latest;
   const amount = fmtUSD(monthly, 0);
+  const fromGitHub = analysis.budgetSource === 'github';
 
   let body: ReactNode;
   if (monthly <= 0) {
@@ -202,8 +215,14 @@ export function BudgetCard() {
     <Card
       title={t(TITLE)}
       calc={['budget-used', 'budget-hit-date']}
-      subtitle={monthly > 0 ? t('{amount} a month on top of seats', { amount }) : t('Keep charges on top of seats under control')}
-      actions={monthly > 0 && !narrowed ? <SettingsButton label={t('Change budget')} /> : undefined}
+      subtitle={
+        monthly > 0
+          ? fromGitHub
+            ? t('{amount} a month on top of seats, from the budget at GitHub', { amount })
+            : t('{amount} a month on top of seats', { amount })
+          : t('Keep charges on top of seats under control')
+      }
+      actions={monthly > 0 && !narrowed ? <SettingsButton label={fromGitHub ? t('Set a monthly budget') : t('Change budget')} /> : undefined}
       footer={<DocLinks topic="budgets" title={t('Learn more')} limit={3} compact />}
     >
       {body}

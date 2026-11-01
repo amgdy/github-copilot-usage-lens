@@ -100,7 +100,7 @@ export const SPEND_DOCS: MetricDoc[] = [
     meaning: 'How much of the monthly budget for the billed amount the latest month has used.',
     formula: 'Budget used = billed in the latest month ÷ monthly budget',
     steps: [
-      'The monthly budget is the amount you enter in Settings. Only the billed amount counts against it. Seat fees are not part of it.',
+      'The monthly budget is the amount you enter in Settings. When Settings has none, it is the AI credit budget of your enterprise or organization from the GitHub data file. Only the billed amount counts against it. Seat fees are not part of it.',
       'The latest month is the last month with usage rows in the selected period. A month in progress counts what was billed so far, and a month cut by the selected dates counts only what was billed inside them.',
       'The bar is green below 80%, amber from 80% and red from 100%. The color follows the worse of the share used now and the share projected for the end of the month.',
       'For a month in progress, the lighter part of the bar is the projected rest of the month, and "Projected at month end" is the projected billed amount (see Projected month total).',

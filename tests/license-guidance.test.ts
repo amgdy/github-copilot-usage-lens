@@ -30,4 +30,13 @@ describe('license export guidance', () => {
     expect(text).toContain('activity older than 90 days also appears blank.');
     expect(text).toContain('It does not avoid the 90-day activity limit.');
   });
+
+  it('points to collector commands and explains cost center assignments already used', () => {
+    const text = textOf(renderToStaticMarkup(createElement(EnrichmentCard)));
+    expect(text).toContain('Run the collector script with the command from the GitHub data file card, then load its file.');
+    expect(text).toContain('The Budgets page lists each budget');
+    expect(text).toContain('The Budgets page uses their user, team and organization assignments');
+    expect(text).toContain('shows their included credit pool controls.');
+    expect(text).not.toContain('Not read yet');
+  });
 });

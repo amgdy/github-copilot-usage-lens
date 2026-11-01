@@ -1,8 +1,9 @@
 import { msg, t, tp } from '../../i18n/core.ts';
+import { monthOfKey, type GitHubData } from '../collection/derive';
 import type { DataStore } from '../types';
 import { CATEGORIES, labelOf } from '../types';
 import type { ModelTable } from '../pricing/models';
-import { fmtDay } from '../utils/date';
+import { fmtDay, monthLabel, parseIsoDay } from '../utils/date';
 import { fmtInt, fmtMultiple, fmtPct, fmtPctAuto, fmtUSD, pluralize } from '../utils/format';
 import type { Aggregates } from './aggregate';
 import type { AnomalyDay, Trend } from './anomalies';
@@ -10,8 +11,9 @@ import { quantile } from './anomalies';
 import type { AutoSummary } from './autoDiscount';
 import { coverageIssues, type DataCoverage } from './coverage';
 import type { Filters } from './filters';
+import type { BudgetSource } from './githubBudget';
 import { DEFAULT_LEVERS, type LeverResult, type LeverStep } from './levers';
-import type { PoolSummary } from './pool';
+import type { BudgetStatus, PoolSummary } from './pool';
 import { BLANK_ID } from './prepare';
 import type { SeatPlan } from './seats';
 import { budgetOf, type Settings } from './settings';
@@ -30,7 +32,8 @@ export type PageId =
   | 'recommendations'
   | 'data'
   | 'settings'
-  | 'methodology';
+  | 'methodology'
+  | 'budgets';
 
 export type Severity = 'critical' | 'high' | 'medium' | 'low' | 'info' | 'positive';
 export type RecTheme = 'cost' | 'pool' | 'efficiency' | 'adoption' | 'governance' | 'data';
@@ -67,6 +70,10 @@ export const DOCS = {
   seats: { label: msg('Seats and billing cycles'), url: `${DOCS_BASE_URL}/concepts/billing-and-usage/organizations-and-enterprises/seats-and-billing-cycles` },
   monitor: { label: msg('Monitoring AI usage'), url: `${DOCS_BASE_URL}/how-tos/manage-and-track-spending/monitor-ai-usage` },
   usageMetrics: { label: msg('GitHub Copilot usage metrics'), url: `${DOCS_BASE_URL}/concepts/billing-and-usage/copilot-usage-metrics` },
+  grantAccess: {
+    label: msg('Granting access to GitHub Copilot for members of your organization'),
+    url: `${DOCS_BASE_URL}/how-tos/administer-copilot/manage-for-organization/manage-access/grant-access`,
+  },
 } satisfies Record<string, DocLink>;
 
 export interface RecJump {
@@ -123,6 +130,10 @@ export interface RecContext {
   coverage: DataCoverage;
   /** Auto model selection in this scope: the discount received and the discount hand-picked usage misses. */
   auto: AutoSummary;
+  /** What the GitHub data file of the collector scripts adds. Missing or null when none is loaded, and always for the sample report. */
+  github?: GitHubData | null;
+  /** Where the monthly budget in `settings` comes from: Settings, the GitHub data file, or nowhere. */
+  budgetSource?: BudgetSource;
 }
 
 export interface Headline {
@@ -141,6 +152,23 @@ const brief = (people: { name: string }[], limit = 5): string => {
   return people.length > limit ? t('{names} and {n} more', { names, n: fmtInt(people.length - limit) }) : names;
 };
 const who = (profiles: UserProfile[], limit = 12): { id: number; name: string }[] => profiles.slice(0, limit).map((user) => ({ id: user.id, name: user.name }));
+
+/** One evidence line on the monthly budget: how much of it the latest month used, and where it is heading. */
+function budgetLine(budget: BudgetStatus): string {
+  const values = {
+    budget: fmtUSD(budget.monthlyBudget, 0),
+    month: budget.month,
+    burn: fmtPct(budget.burn, 0),
+    projected: budget.projectedBurn !== null ? fmtPct(budget.projectedBurn, 0) : '',
+    day: budget.hitDate !== null ? fmtDay(budget.hitDate) : '',
+  };
+  if (budget.projectedBurn !== null) {
+    return budget.hitDate !== null
+      ? t('Budget {budget} for {month}: {burn} used so far, {projected} projected, limit reached around {day}.', values)
+      : t('Budget {budget} for {month}: {burn} used so far, {projected} projected.', values);
+  }
+  return budget.hitDate !== null ? t('Budget {budget} for {month}: {burn} used so far, limit reached around {day}.', values) : t('Budget {budget} for {month}: {burn} used so far.', values);
+}
 
 export function buildRecommendations(context: RecContext): Recommendation[] {
   const { store, agg: aggregates, users, pool, seats, levers, settings, narrowed } = context;
@@ -245,24 +273,7 @@ export function buildRecommendations(context: RecContext): Recommendation[] {
       }
     }
     const budget = pool.budget;
-    if (budget) {
-      const values = {
-        budget: fmtUSD(budget.monthlyBudget, 0),
-        month: budget.month,
-        burn: fmtPct(budget.burn, 0),
-        projected: budget.projectedBurn !== null ? fmtPct(budget.projectedBurn, 0) : '',
-        day: budget.hitDate !== null ? fmtDay(budget.hitDate) : '',
-      };
-      lines.push(
-        budget.projectedBurn !== null
-          ? budget.hitDate !== null
-            ? t('Budget {budget} for {month}: {burn} used so far, {projected} projected, limit reached around {day}.', values)
-            : t('Budget {budget} for {month}: {burn} used so far, {projected} projected.', values)
-          : budget.hitDate !== null
-            ? t('Budget {budget} for {month}: {burn} used so far, limit reached around {day}.', values)
-            : t('Budget {budget} for {month}: {burn} used so far.', values),
-      );
-    }
+    if (budget) lines.push(budgetLine(budget));
     if (lines.length) {
       const budgetHit = budget?.projectedBurn != null && budget.projectedBurn >= 1;
       add({
@@ -722,6 +733,16 @@ export function buildRecommendations(context: RecContext): Recommendation[] {
           monthlyNet > 0.5
             ? t('A metered-overage budget of about {budget} per month covers the projected overage with 25% headroom. Your maximum bill = seat fees + that budget.', { budget: fmtUSD(entBudget, 0) })
             : t('No overage so far, so an enterprise budget can start small (for example {budget}) and act as an early warning. Your maximum bill = seat fees + that budget.', { budget: fmtUSD(entBudget, 0) }),
+          ...(context.github && context.github.copilotBudgets.length > 0
+            ? [
+                tp(
+                  context.github.copilotBudgets.length,
+                  'The GitHub data file lists {n} budget for GitHub Copilot. Check it on the Budgets page before you add more.',
+                  'The GitHub data file lists {n} budgets for GitHub Copilot. Check them on the Budgets page before you add more.',
+                  { n: fmtInt(context.github.copilotBudgets.length) },
+                ),
+              ]
+            : []),
         ],
         actions: [
           t('Create a universal user-level budget for fair access to the pool. It is a hard stop on pool and metered usage combined.'),
@@ -1012,7 +1033,166 @@ export function buildRecommendations(context: RecContext): Recommendation[] {
     }
   }
 
-  // 18. Healthy ----------------------------------------------------------------------------------------------
+  // 18. Budgets, seats and billing from the GitHub data file ------------------------------------------------------------
+  const github = context.github ?? null;
+  if (github !== null) {
+    const collectedOn = t('As of {day}, when the GitHub data was collected.', { day: fmtDay(parseIsoDay(github.collection.header.day), true) });
+    const githubBudget = github.budget;
+
+    if (githubBudget !== null && !narrowed) {
+      const amount = fmtUSD(githubBudget.amount, 0);
+      // The report's view of the same budget, only when the analysis compares with the same amount in the month the data was collected.
+      const sameMonth = pool.latest !== null && pool.latest.month === monthOfKey(github.collection.header.day.slice(0, 7));
+      const reportBudget = sameMonth && pool.budget !== null && Math.abs(pool.budget.monthlyBudget - githubBudget.amount) < 0.005 ? pool.budget : null;
+      const consumedShare = githubBudget.consumed !== null && githubBudget.amount > 0 ? githubBudget.consumed / githubBudget.amount : null;
+      const reached = (consumedShare ?? 0) >= 1 || (reportBudget?.burn ?? 0) >= 1;
+      const projectedOver = (reportBudget?.projectedBurn ?? 0) >= 1 || (reportBudget !== null && reportBudget.hitDate !== null);
+      const near = (consumedShare ?? 0) >= 0.8 || (reportBudget?.burn ?? 0) >= 0.8;
+      const evidence: string[] = [];
+      if (githubBudget.consumed !== null && consumedShare !== null) {
+        evidence.push(t('GitHub shows {consumed} of the {amount} budget used ({share}).', { consumed: fmtUSD(githubBudget.consumed, 0), amount, share: fmtPct(consumedShare, 0) }) + ' ' + collectedOn);
+      }
+      if (reportBudget !== null) evidence.push(budgetLine(reportBudget));
+
+      if (!githubBudget.stopsUsage && (reached || projectedOver || near)) {
+        add({
+          id: 'budget-no-stop',
+          theme: 'governance',
+          audience: ['management', 'admin'],
+          severity: reached || projectedOver ? 'high' : 'medium',
+          title: t('The {amount} budget only sends alerts, so the bill can go past it', { amount }),
+          summary: t('This budget does not stop usage. GitHub keeps billing after the limit and only sends alerts. Decide whether that is what you want.'),
+          evidence: [
+            ...evidence,
+            githubBudget.willAlert ? t('Budget alerts are on: GitHub sends an email at 75%, 90% and 100% of the budget.') : t('Budget alerts are off, so nobody is told when the budget runs out.'),
+          ],
+          actions: [
+            t('To cap the bill, edit the budget and select "Stop usage when budget limit is reached".'),
+            t('To keep everyone working, raise the budget to what you expect to pay, so its alerts still mean something.'),
+            githubBudget.willAlert ? t('Check that the right people get the budget alerts.') : t('Turn on budget alerts so the right people hear about it early.'),
+          ],
+          confidence: 'high',
+          docs: [DOCS.budgets, DOCS.budgetTuning],
+          jump: { page: 'spend', label: t('Open Usage and pool') },
+        });
+      }
+
+      if (githubBudget.stopsUsage && (reached || projectedOver)) {
+        add({
+          id: 'budget-stop-ahead',
+          theme: 'governance',
+          audience: ['management', 'admin'],
+          severity: 'high',
+          title: t('Usage that costs AI credits stops when the {amount} budget runs out', { amount }),
+          summary: t('This budget stops usage. Once it runs out, GitHub blocks usage that costs AI credits until the next billing cycle or until the budget is raised.'),
+          evidence,
+          actions: [
+            t('Decide before the limit is reached: raise the budget so the work can go on, or keep the stop and tell people when usage comes back.'),
+            t('Apply the usage levers below to make the budget last longer.'),
+          ],
+          confidence: 'high',
+          docs: [DOCS.budgets, DOCS.budgetTuning],
+          jump: { page: 'spend', label: t('Open Usage and pool') },
+        });
+      }
+    }
+
+    // In a filtered view only the users in it count.
+    const profileByLogin = new Map(profiles.map((user) => [user.name.toLowerCase(), user]));
+    const atLimit = github.usersAtLimit.filter((user) => !narrowed || profileByLogin.has(user.login.toLowerCase()));
+    if (atLimit.length > 0) {
+      const inReport = atLimit.map((user) => profileByLogin.get(user.login.toLowerCase())).filter((user): user is UserProfile => user !== undefined);
+      const shown = atLimit.slice(0, 5);
+      add({
+        id: 'user-budget-reached',
+        theme: 'governance',
+        audience: ['admin', 'management'],
+        severity: 'medium',
+        title: tp(atLimit.length, '{n} user reached their budget and cannot use AI credits', '{n} users reached their budget and cannot use AI credits', { n: fmtInt(atLimit.length) }),
+        summary: t('Budgets for users always stop usage. These people cannot use features that cost AI credits until the next billing cycle or until their budget is raised.'),
+        evidence: [
+          ...shown.map((user) => t('{name}: {consumed} used of a {limit} budget.', { name: user.login, consumed: fmtUSD(user.consumed), limit: fmtUSD(user.limit) })),
+          ...(atLimit.length > shown.length
+            ? [tp(atLimit.length - shown.length, '{n} more user also reached their budget.', '{n} more users also reached their budget.', { n: fmtInt(atLimit.length - shown.length) })]
+            : []),
+          collectedOn,
+        ],
+        actions: [
+          t('Ask each person whether the work needs more. If it does, give them their own budget, with an end date for a short need.'),
+          t('If many people reach the same budget, raise it for everyone or for their cost center.'),
+          t('Share the usage levers below with people who reach their budget early in the month.'),
+        ],
+        confidence: 'high',
+        affected: who(inReport),
+        affectedCount: atLimit.length,
+        docs: [DOCS.budgets, DOCS.budgetTuning],
+        jump: inReport.length > 0 ? { page: 'users', label: t('Show these users'), filters: { users: inReport.map((user) => user.name) } } : { page: 'budgets', label: t('Open the Budgets page') },
+      });
+    }
+
+    const gaps = github.months.filter((check) => check.status === 'lower' || check.status === 'higher');
+    if (gaps.length > 0) {
+      const lower = gaps.some((check) => check.status === 'lower');
+      add({
+        id: 'report-gap',
+        theme: 'data',
+        audience: ['admin'],
+        severity: lower ? 'medium' : 'low',
+        title: t('The usage report does not match GitHub billing'),
+        summary: t('In some months the usage report and GitHub billing do not agree, so figures from the report may be off. GitHub billing is what you pay.'),
+        evidence: [
+          ...gaps.map((check) =>
+            t('{month}: usage {reportUsage} in the report and {githubUsage} at GitHub; billed {reportBilled} and {githubBilled}.', {
+              month: monthLabel(monthOfKey(check.month)),
+              reportUsage: fmtUSD(check.report.gross, 0),
+              githubUsage: fmtUSD(check.github?.gross ?? 0, 0),
+              reportBilled: fmtUSD(check.report.net, 0),
+              githubBilled: fmtUSD(check.github?.net ?? 0, 0),
+            }),
+          ),
+          ...(github.checkedOrgs.length > 0 ? [t('Only the report rows of {orgs} are compared, the organizations in the GitHub data file.', { orgs: github.checkedOrgs.join(t(', ')) })] : []),
+        ],
+        actions: [
+          ...(lower ? [t('Download the usage report again for the whole month and load all its files together.')] : []),
+          t('Check that the usage report and the GitHub data file cover the same enterprise or organizations.'),
+        ],
+        confidence: 'high',
+        jump: { page: 'data', label: t('Open Data') },
+      });
+    }
+
+    // GitHub counts activity of any kind, code completions too, but early in the billing cycle most seats have none yet.
+    const cycleDay = Number(github.collection.header.day.slice(8, 10));
+    const autoOrgs = cycleDay >= 15 ? (github.seats?.orgs ?? []).filter((summary) => summary.management === 'assign_all' && (summary.inactiveThisCycle ?? 0) > 0) : [];
+    if (autoOrgs.length > 0) {
+      const inactive = autoOrgs.reduce((total, summary) => total + (summary.inactiveThisCycle ?? 0), 0);
+      const seatTotal = autoOrgs.reduce((total, summary) => total + (summary.total ?? 0), 0);
+      add({
+        id: 'seat-auto-assign',
+        theme: 'governance',
+        audience: ['admin', 'management'],
+        severity: inactive >= 5 && seatTotal > 0 && inactive / seatTotal >= 0.2 ? 'medium' : 'low',
+        title: tp(autoOrgs.length, '{n} organization gives a seat to every member, used or not', '{n} organizations give a seat to every member, used or not', { n: fmtInt(autoOrgs.length) }),
+        summary: t('Each member of these organizations gets a paid seat, and billing starts when the seat is given, not at first use. Giving seats only to chosen members or teams keeps them for people who use them.'),
+        evidence: [
+          ...autoOrgs.map((summary) =>
+            t('{org}: {inactive} of {total} seats had no GitHub Copilot activity this billing cycle.', { org: summary.org, inactive: fmtInt(summary.inactiveThisCycle ?? 0), total: fmtInt(summary.total ?? 0) }),
+          ),
+          collectedOn,
+        ],
+        actions: [
+          t('In the GitHub Copilot settings of the organization, give access to selected members or teams instead of all members.'),
+          t('Ask the owners of the inactive seats whether they still need access.'),
+          t('Revisit at the next billing cycle: seat removals apply from the start of the next cycle.'),
+        ],
+        confidence: 'high',
+        docs: [DOCS.grantAccess, DOCS.seats],
+        jump: { page: 'organization', label: t('Open Organization') },
+      });
+    }
+  }
+
+  // 19. Healthy ----------------------------------------------------------------------------------------------
   if (poolWhole && !pool.capacityExceeded && totals.net <= 0.005 && poolUse >= 0.6 && out.every((recommendation) => SEVERITY_ORDER[recommendation.severity] > 1)) {
     add({
       id: 'healthy',
@@ -1031,7 +1211,7 @@ export function buildRecommendations(context: RecContext): Recommendation[] {
     });
   }
 
-  // 19. Missing columns --------------------------------------------------------------------------------------------
+  // 20. Missing columns --------------------------------------------------------------------------------------------
   {
     const issues = coverageIssues(context.coverage, users.fallbackQuotaCredits).filter((issue) => issue.severity === 'warn');
     if (issues.length > 0) {
@@ -1050,7 +1230,7 @@ export function buildRecommendations(context: RecContext): Recommendation[] {
     }
   }
 
-  // 20. Data notes -------------------------------------------------------------------------------------------------
+  // 21. Data notes -------------------------------------------------------------------------------------------------
   {
     const notes: string[] = [];
     if (!narrowed && pool.capacityExceeded) {

@@ -135,12 +135,13 @@ export function Showback() {
       },
       {
         key: 'total',
+        strong: true,
         header: t('Total allocation'),
         hint: showSeats ? t('Seat cost plus overage allocation') : t('Overage allocation'),
         calc: 'showback-total',
         align: 'end',
         value: (row) => row.total,
-        render: (row) => <span className="font-semibold">{fmtUSD(row.total)}</span>,
+        render: (row) => fmtUSD(row.total),
         total: (rows) => fmtUSD(sum(rows, (row) => row.total)),
       },
       {

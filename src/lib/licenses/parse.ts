@@ -2,7 +2,7 @@ import { t, tp } from '../../i18n/core.ts';
 import { fmtInt } from '../utils/format';
 import { parseSeatsCsv } from './csv';
 import type { ReadStats } from './fields';
-import { MAX_SEATS, parseSeatsJson } from './json';
+import { MAX_SEATS, parseSeatsJson, seatsFromValues, type JsonSeats } from './json';
 import { looksTabular, parseLoginList } from './list';
 import { latestStamp, mergeSeats } from './merge';
 import type { LicenseParse } from './types';
@@ -70,7 +70,10 @@ function commonProblems(tally: Tally): string[] {
 }
 
 function fromJson(body: string): LicenseParse {
-  const json = parseSeatsJson(body);
+  return fromJsonSeats(parseSeatsJson(body));
+}
+
+function fromJsonSeats(json: JsonSeats): LicenseParse {
   const problems: string[] = [];
   if (json.errors.length > 0) {
     problems.push(
@@ -174,6 +177,15 @@ function parseInner(raw: string, fileName: string): LicenseParse {
 export function parseLicenseFile(text: string, fileName?: string): LicenseParse {
   try {
     return parseInner(typeof text === 'string' ? text : '', fileName ?? '');
+  } catch {
+    return unknown([t('The file could not be read as a license list.')]);
+  }
+}
+
+/** Reads a seat list that is already parsed, in the shape of the REST seats response: { total_seats, seats: [...] }. Never throws. */
+export function parseLicenseValue(value: unknown): LicenseParse {
+  try {
+    return fromJsonSeats(seatsFromValues([value]));
   } catch {
     return unknown([t('The file could not be read as a license list.')]);
   }

@@ -423,6 +423,17 @@ html[data-theme='dark'][data-palette='colorblind'] {
   .num {
     font-variant-numeric: tabular-nums;
   }
+  /* A figure that answers the question (money, a percent, a limit) is semibold so the eye finds it first. It never breaks
+     across lines. Dates and counts stay regular, so the bold figures keep their meaning. */
+  .fig {
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  /* In gray text the figure also takes the full text color, so it stands out without getting bigger. */
+  :is(.text-fg-muted, .text-fg-subtle) > .fig {
+    color: var(--fg);
+  }
   /* Panels are white sheets on the gray page, drawn with a hairline. */
   .card {
     @apply rounded-xl border border-border bg-surface;

@@ -40,6 +40,7 @@ const buildColumns = (): Column<AutoModelRow>[] => [
   },
   {
     key: 'billed',
+    strong: true,
     header: t('Auto usage'),
     align: 'end',
     value: (row) => row.billed,

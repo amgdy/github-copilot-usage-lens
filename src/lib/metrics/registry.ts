@@ -1,7 +1,9 @@
 import { getLocale, t as translate } from '../../i18n/core.ts';
+import { BUDGETS_DOCS } from './docs/budgets';
 import { CORE_DOCS } from './docs/core';
 import { DATA_DOCS } from './docs/data';
 import { EFFICIENCY_DOCS } from './docs/efficiency';
+import { GITHUB_DOCS } from './docs/github';
 import { LICENSES_DOCS } from './docs/licenses';
 import { LICENSES_PAGE_DOCS } from './docs/licenses-page';
 import { MODELS_DOCS } from './docs/models';
@@ -20,6 +22,7 @@ export const METRICS: readonly MetricDoc[] = (() => {
     ...CORE_DOCS,
     ...OVERVIEW_DOCS,
     ...SPEND_DOCS,
+    ...BUDGETS_DOCS,
     ...USERS_DOCS,
     ...SEGMENTS_DOCS,
     ...MODELS_DOCS,
@@ -30,6 +33,7 @@ export const METRICS: readonly MetricDoc[] = (() => {
     ...PATTERNS_DOCS,
     ...RECOMMENDATIONS_DOCS,
     ...DATA_DOCS,
+    ...GITHUB_DOCS,
   ];
   const order = new Map<MetricArea, number>(METRIC_AREAS.map((area, index) => [area, index]));
   return all

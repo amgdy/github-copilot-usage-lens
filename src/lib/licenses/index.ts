@@ -1,5 +1,5 @@
 export type { LicenseKind, LicenseParse, LicenseSeat, SeatSource } from './types';
-export { parseLicenseFile } from './parse';
+export { parseLicenseFile, parseLicenseValue } from './parse';
 export { SNIFF_CHARS, classifyUpload, looksLikeLicenseFile, type UploadKind } from './detect';
 export { mergeSeats } from './merge';
 export { isLoginLike, loginKey, readLogin } from './login';

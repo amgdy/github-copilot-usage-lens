@@ -6,8 +6,12 @@ import { readLogin } from './login';
 /** The number of characters the detector reads. Larger files are judged by their first lines only. */
 export const SNIFF_CHARS = 4096;
 
-/** Where an uploaded file belongs: a usage report, a license export, or neither (the caller decides). */
-export type UploadKind = 'usage' | 'license' | 'unknown';
+/** Where an uploaded file belongs: a usage report, a license export, a GitHub data file of the collector scripts, or neither (the caller decides). */
+export type UploadKind = 'usage' | 'license' | 'collection' | 'unknown';
+
+/** The header line of a GitHub data file (scripts/collect.sh and scripts/collect.ps1). */
+const COLLECTION_HEADER_KIND = /"kind"\s*:\s*"header"/;
+const COLLECTION_HEADER_FORMAT = /"format"\s*:\s*"github-copilot-usage-lens-data"/;
 
 /** Keys that only a seat list of the GitHub API has. They sit in the first few hundred characters of the response. */
 const LICENSE_JSON_KEY =
@@ -55,11 +59,16 @@ function isLoginList(head: string, truncated: boolean, fileName: string): boolea
  * always comes first: a header with usage columns, or a date column next to a login column, is a usage report
  * and never a license file. License files are the REST seats JSON (it has keys like "seats" or "assignee"),
  * a CSV with a login column and no usage or date column (the Activity report), and a plain list of logins.
+ * A GitHub data file of the collector scripts starts with its header line; its seat lines would also look like a seat list.
  */
 export function classifyUpload(text: string, fileName?: string): UploadKind {
   const truncated = text.length > SNIFF_CHARS;
   const head = text.slice(0, SNIFF_CHARS).replace(/^\uFEFF/, '').trimStart();
   if (head === '') return 'unknown';
+  if (head[0] === '{') {
+    const firstLine = head.split('\n', 1)[0];
+    if (COLLECTION_HEADER_KIND.test(firstLine) && COLLECTION_HEADER_FORMAT.test(firstLine)) return 'collection';
+  }
   if (head[0] === '{' || head[0] === '[') return LICENSE_JSON_KEY.test(head) ? 'license' : 'unknown';
 
   const names = firstRow(head).map(normalizeHeader);

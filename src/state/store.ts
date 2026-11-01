@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import type { Collection } from '../lib/collection/types';
 import type { DataStore } from '../lib/types';
 import type { Prepared } from '../lib/analytics/prepare';
 import { emptyFilters, type Filters, type ListFilterKey } from '../lib/analytics/filters';
@@ -21,6 +22,8 @@ export interface Dataset {
   loadedAt: number;
   /** True for the made-up sample report. The app then says so on every page. */
   sample?: boolean;
+  /** The made-up GitHub data of the sample report. A GitHub data file you load is never used with the sample. */
+  sampleGitHub?: Collection;
 }
 
 /** The dataset name in the current language. File names are shown as they are. */
@@ -85,11 +88,24 @@ export function applyTheme(mode: ThemeMode): void {
 interface AppState {
   dataset: Dataset | null;
   setDataset: (dataset: Dataset | null) => void;
+  /**
+   * Closes everything loaded in this tab (the usage report or the sample, and the GitHub data file) with its filters,
+   * errors and open panels, so the start page shows. Saved settings stay.
+   */
+  closeData: () => void;
+  /**
+   * The GitHub data file of the collector scripts (budgets, seats, billing). Kept in memory only, and kept when another
+   * usage report is loaded. Never used with the sample report.
+   */
+  collection: Collection | null;
+  setCollection: (collection: Collection | null) => void;
   /** True while the landing page is shown on top of an already loaded dataset ("Load other data"). */
   pickingData: boolean;
   setPickingData: (picking: boolean) => void;
   loading: LoadingState | null;
   setLoading: (loading: LoadingState | null) => void;
+  /** Changes when data is closed, so unfinished reads cannot restore it. */
+  dataVersion: number;
   error: string | null;
   setError: (error: string | null) => void;
 
@@ -127,15 +143,35 @@ interface AppState {
   setFilterDrawerOpen: (open: boolean) => void;
   navOpen: boolean;
   setNavOpen: (open: boolean) => void;
+  /** The "Start fresh" question is open. One dialog in the app shell serves every button that asks it. */
+  startFreshOpen: boolean;
+  setStartFreshOpen: (open: boolean) => void;
 }
 
 export const useApp = create<AppState>((set, get) => ({
   dataset: null,
   setDataset: (dataset) => set({ dataset, pickingData: false, filters: emptyFilters(), selectedUser: null, error: null }),
+  closeData: () =>
+    set({
+      dataset: null,
+      collection: null,
+      pickingData: false,
+      loading: null,
+      dataVersion: get().dataVersion + 1,
+      error: null,
+      filters: emptyFilters(),
+      selectedUser: null,
+      filterDrawerOpen: false,
+      navOpen: false,
+      startFreshOpen: false,
+    }),
+  collection: null,
+  setCollection: (collection) => set({ collection }),
   pickingData: false,
   setPickingData: (pickingData) => set({ pickingData }),
   loading: null,
   setLoading: (loading) => set({ loading }),
+  dataVersion: 0,
   error: null,
   setError: (error) => set({ error }),
 
@@ -204,4 +240,6 @@ export const useApp = create<AppState>((set, get) => ({
   setFilterDrawerOpen: (filterDrawerOpen) => set({ filterDrawerOpen }),
   navOpen: false,
   setNavOpen: (navOpen) => set({ navOpen }),
+  startFreshOpen: false,
+  setStartFreshOpen: (startFreshOpen) => set({ startFreshOpen }),
 }));

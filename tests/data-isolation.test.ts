@@ -41,6 +41,6 @@ it('keeps the made-up data generator behind the sample report button', () => {
   expect(importers).toEqual([SAMPLE_LOADER]);
 
   const loader = readFileSync(join(ROOT, SAMPLE_LOADER), 'utf8');
-  expect(loader).toMatch(/await import\('\.\.\/lib\/demo\/generate'\)/);
+  expect(loader).toMatch(/await Promise\.all\(\[import\('\.\.\/lib\/demo\/generate'\), import\('\.\.\/lib\/demo\/github'\)\]\)/);
   expect(loader).not.toMatch(/^\s*import\b[^;]*from\s+['"][^'"]*\/demo\//m);
 });

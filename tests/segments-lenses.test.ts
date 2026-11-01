@@ -335,7 +335,8 @@ describe('the sections of the page', () => {
     const data = lensOf(await withModels(), 'tier');
     const all = html(createElement(LensNotes, { data, segmentFiltered: false, users: 4, assumedSeats: 4, fallbackQuotaCredits: 1900 }));
     expect(all).toContain('This report does not say which seats users have');
-    expect(all).toContain('1,900 credits ($19) a month');
+    // The money figure sits in a semibold span, so compare the words without the tags.
+    expect(all.replace(/<[^>]+>/g, '')).toContain('1,900 credits ($19) a month');
     const some = html(createElement(LensNotes, { data, segmentFiltered: false, users: 4, assumedSeats: 2, fallbackQuotaCredits: 1900 }));
     expect(some).toContain('2 users without seat information');
   });

@@ -27,12 +27,14 @@ describe('loading the sample report', () => {
   it('makes a usage report in the browser and marks it as the sample', async () => {
     expect(await loadSample()).toBe(true);
     expect(loadSources).toHaveBeenCalledTimes(1);
-    const [sources, label, options] = loadSources.mock.calls[0] as [{ name: string; data: string }[], { text: string }, { sample?: boolean }];
+    const [sources, label, options] = loadSources.mock.calls[0] as [{ name: string; data: string }[], { text: string }, { sample?: boolean; sampleGitHub?: unknown }];
     expect(sources).toHaveLength(1);
     expect(sources[0].name).toBe(SAMPLE_FILE_NAME);
     expect(Object.keys(naiveRows(sources[0].data)[0] ?? {})).toEqual([...CSV_HEADER]);
     expect(label.text).toBe('Sample report (made-up data)');
-    expect(options).toEqual({ sample: true });
+    expect(options.sample).toBe(true);
+    expect(Object.keys(options).sort()).toEqual(['sample', 'sampleGitHub']);
+    expect(options.sampleGitHub).toBeTypeOf('function');
   });
 
   it('uses dates from the last three months, so it looks like a fresh export', async () => {

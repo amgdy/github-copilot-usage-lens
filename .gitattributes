@@ -1,0 +1,2 @@
+# Shell scripts keep Unix line ends on every system, so bash in Git Bash and WSL can run them.
+*.sh text eol=lf

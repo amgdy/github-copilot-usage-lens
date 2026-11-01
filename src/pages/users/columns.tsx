@@ -178,6 +178,7 @@ function generalColumns({ taxonomy, trendReliable, coverage }: ColumnContext): C
     },
     {
       key: 'gross',
+      strong: true,
       header: t('Usage'),
       hint: t('Usage in the date range, before included credits'),
       calc: 'usage',

@@ -28,6 +28,7 @@ const buildColumns = (): Column<ModelRow>[] => [
   },
   {
     key: 'gross',
+    strong: true,
     header: t('Usage'),
     align: 'end',
     value: (model) => model.gross,

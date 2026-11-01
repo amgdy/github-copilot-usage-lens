@@ -70,6 +70,7 @@ export function GroupTable({
     };
     const usage: Column<Group> = {
       key: 'usage',
+      strong: true,
       header: t('Usage'),
       hint: t('Value of all AI credits used (1 credit = $0.01), including usage covered by included credits'),
       calc: 'usage',

@@ -9,6 +9,7 @@ import { NarrowedNotice } from './shared';
 import { BillDrivers } from './spend/BillDrivers';
 import { BillingExplainer } from './spend/BillingExplainer';
 import { BudgetCard } from './spend/BudgetCard';
+import { GitHubBilling } from './spend/GitHubBilling';
 import { buildMonthRows } from './spend/helpers';
 import { MonthTable } from './spend/MonthTable';
 import { OverageUsers } from './spend/OverageUsers';
@@ -69,6 +70,7 @@ export default function SpendPage() {
         </Section>
         <SkuTable />
         <BudgetCard />
+        <GitHubBilling />
         <BillingExplainer />
       </div>
     </>

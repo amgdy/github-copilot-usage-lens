@@ -1,6 +1,6 @@
 import { AlertTriangle, CheckCircle2, Eye } from 'lucide-react';
 import { themeLabel } from '../../components/RecommendationCard';
-import { Card, CalcInfo, SeverityBadge, TONE_TEXT, cx } from '../../components/ui';
+import { Card, CalcInfo, Figures, SeverityBadge, TONE_TEXT, cx } from '../../components/ui';
 import { msg, t, tp } from '../../i18n';
 import type { Recommendation } from '../../lib/analytics/recommendations';
 import { pluralize } from '../../lib/utils/format';
@@ -28,7 +28,9 @@ function Headline() {
           <CalcInfo id="headline-status" />
         </div>
         <h2 className="font-display mt-1.5 text-lg leading-snug text-fg sm:text-xl">{headline.title}</h2>
-        <p className="mt-1 max-w-3xl text-sm text-fg-muted">{headline.detail}</p>
+        <p className="mt-1 max-w-3xl text-sm text-fg-muted">
+          <Figures text={headline.detail} />
+        </p>
       </div>
     </div>
   );
@@ -71,7 +73,9 @@ function PlanValue() {
         <CalcInfo id="rec-plan-value" />
       </div>
       <div className="num text-xl font-semibold leading-tight tracking-tight">{value}</div>
-      <p className="mt-1 text-xs text-fg-muted">{detail}</p>
+      <p className="mt-1 text-xs text-fg-muted">
+        <Figures text={detail} />
+      </p>
       <p className="mt-2 text-xs text-fg-subtle">{t('Recommendations overlap, so their individual values are not added up. This figure comes from one combined plan that applies each lever once.')}</p>
     </div>
   );

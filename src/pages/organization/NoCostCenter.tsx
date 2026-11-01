@@ -31,7 +31,7 @@ export function NoCostCenter() {
         ),
       },
       { key: 'persona', header: t('Persona'), calc: 'persona-groups', value: (user) => personas[user.persona]?.label ?? '', render: (user) => <TaxBadge item={personas[user.persona]} /> },
-      { key: 'usage', header: t('Usage'), calc: 'usage', align: 'end', value: (user) => user.gross, render: (user) => fmtUSD(user.gross) },
+      { key: 'usage', header: t('Usage'), calc: 'usage', align: 'end', strong: true, value: (user) => user.gross, render: (user) => fmtUSD(user.gross) },
       {
         key: 'share',
         header: t('Share of usage'),

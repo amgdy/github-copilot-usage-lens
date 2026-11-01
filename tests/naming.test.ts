@@ -3,7 +3,7 @@ import { join, relative } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 /**
- * The product is always called "GitHub Copilot", never just "Copilot". This scans the source, the docs and the
+ * The product is always called "GitHub Copilot", never just "Copilot". This scans the source, the scripts, the docs and the
  * Arabic dictionaries. Identifiers such as GitHubCopilotIcon and lower-case ids or URLs such as /copilot/ are fine.
  */
 
@@ -11,7 +11,7 @@ const ROOT = join(import.meta.dirname, '..');
 const BARE = /(?<!GitHub\s)(?<![\w/.\-])Copilot\b/g;
 
 const FILES = [
-  ...globSync('{src,scripts,docs}/**/*.{ts,tsx,css,md,html}', { cwd: ROOT })
+  ...globSync('{src,scripts,docs}/**/*.{ts,tsx,css,md,html,sh,ps1}', { cwd: ROOT })
     .sort()
     .map((file) => join(ROOT, file)),
   ...['index.html', 'README.md', 'AGENTS.md', 'package.json'].map((file) => join(ROOT, file)).filter(existsSync),

@@ -574,6 +574,9 @@ const arabic: Dict = {
   'Print this page or save it as a PDF': 'اطبع هذه الصفحة أو احفظها بصيغة PDF',
   Print: 'اطبع',
   'Recommendations sections': 'أقسام التوصيات',
+  '{n} to review': '{n} للمراجعة',
+  'Seats in the lists on this tab: idle seats, Enterprise seats that fit Business and roster seats that never appear.':
+    'التراخيص في قوائم هذا القسم: التراخيص الخاملة، وتراخيص Enterprise التي تناسب Business، وتراخيص القائمة التي لا تظهر أبدًا.',
   'Copied to the clipboard': 'تم النسخ إلى الحافظة',
   'Copying failed. Select the text and copy it by hand.': 'فشل النسخ. حدّد النص وانسخه يدويًا.',
 

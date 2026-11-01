@@ -6,6 +6,7 @@ import { t, tp } from '../i18n';
 import type { LicenseReport } from '../lib/licenses';
 import { fmtInt } from '../lib/utils/format';
 import { useAnalysis } from '../state/analysis';
+import { GitHubSeats } from './licenses/GitHubSeats';
 import { LicenseImport } from './licenses/LicenseImport';
 import { LicenseLists } from './licenses/LicenseLists';
 import { LicenseBreakdowns, LicenseKpis } from './licenses/LicenseSummary';
@@ -123,6 +124,7 @@ export default function LicensesPage() {
       <div className="space-y-4">
         <SampleListNote />
         {report ? <Report report={report} narrowed={analysis.narrowed} /> : <NoLicenses />}
+        <GitHubSeats />
         <Card key="license-import" title={report ? t('Update the license list') : t('Import the license list')} calc="license-import">
           <LicenseImport compact={folded} />
         </Card>

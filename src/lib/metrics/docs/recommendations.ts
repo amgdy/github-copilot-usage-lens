@@ -789,6 +789,136 @@ export const RECOMMENDATIONS_DOCS: MetricDoc[] = [
     links: ['useCostCenters'],
   },
   {
+    id: 'rec-budget-no-stop',
+    title: 'A budget that only sends alerts',
+    area: 'Recommendations',
+    basis: 'calculated',
+    meaning:
+      'Appears when the GitHub data file shows that the AI credit budget of the enterprise or organization does not stop usage, and that budget is used up, nearly used up or on track to run out. GitHub then keeps billing after the limit.',
+    formula: 'Share used = amount used ÷ budget, as GitHub showed it on the day the data was collected',
+    steps: [
+      'It needs a GitHub data file from the collector scripts and the whole-organization view. The budget is the AI credit budget of the same enterprise, or of the one organization in an organization file. When several apply, the smallest one is used.',
+      'It reads the amount used from GitHub on the day the data was collected. When the Monthly budget of the analysis has the same amount, it also uses the latest month of the report: the share used so far, the projected share and the day the budget runs out.',
+      'It appears when the budget does not stop usage and the budget is at least 80% used, at GitHub or in the report, or the report projects that it runs out.',
+      'Severity is High when the budget is used up or projected to run out, and Medium when it is only 80% used or more.',
+      'The evidence says whether budget alerts are on. Confidence is High.',
+    ],
+    columns: ['date', 'net_amount'],
+    settings: ['budgetMonthlyBilled'],
+    notes: [
+      'Without the option "Stop usage when budget limit is reached", a budget only sends alerts at 75%, 90% and 100%. GitHub keeps billing after that.',
+      'The budget counts billed usage only. Included credits are used first and do not count against it.',
+      'The amount used is from the day the data was collected. Usage keeps growing until the end of the month.',
+      'A budget for all of GitHub Copilot is not used here, because it may cover more than AI credits.',
+    ],
+    example:
+      'The enterprise has a $500 budget for AI credits that only sends alerts. On October 20 GitHub showed $450 used, which is 90%. The title reads "The $500 budget only sends alerts, so the bill can go past it" and severity is Medium. When the report projects 130% for the month, severity is High.',
+    related: ['budget-used', 'rec-budgets', 'rec-pool-exhaustion', 'rec-budget-stop-ahead'],
+    links: ['budgets', 'setUpBudgets', 'budgetsAlerts'],
+  },
+  {
+    id: 'rec-budget-stop-ahead',
+    title: 'A budget that stops usage is running out',
+    area: 'Recommendations',
+    basis: 'calculated',
+    meaning:
+      'Appears when the GitHub data file shows that the AI credit budget of the enterprise or organization stops usage, and that budget is used up or on track to run out. People then cannot use features that cost AI credits until the next billing cycle or until the budget is raised.',
+    formula: 'Share used = amount used ÷ budget, as GitHub showed it on the day the data was collected',
+    steps: [
+      'It uses the same budget and the same figures as A budget that only sends alerts.',
+      'It appears when the budget stops usage and is used up, at GitHub or in the latest month of the report, or the report projects that it runs out.',
+      'Severity is High and confidence is High.',
+    ],
+    columns: ['date', 'net_amount'],
+    settings: ['budgetMonthlyBilled'],
+    notes: [
+      'The budget counts billed usage only. Included credits are used first and do not count against it.',
+      'The amount used is from the day the data was collected. The projection comes from the latest month of the report.',
+      'Raising the budget lets people work again right away. Otherwise usage comes back at the start of the next billing cycle.',
+    ],
+    example:
+      'The organization has a $200 budget for AI credits that stops usage. On October 25 GitHub showed $200 used. The title reads "Usage that costs AI credits stops when the $200 budget runs out" and severity is High.',
+    related: ['budget-used', 'rec-budget-no-stop', 'rec-pool-exhaustion'],
+    links: ['budgets', 'setUpBudgets'],
+  },
+  {
+    id: 'rec-user-budget-reached',
+    title: 'Users who reached their budget',
+    area: 'Recommendations',
+    basis: 'calculated',
+    meaning:
+      'Appears when the GitHub data file shows people who used up a budget for users. Budgets for users always stop usage, so these people cannot use features that cost AI credits until the next billing cycle or until their budget is raised.',
+    formula: 'Reached = amount used ≥ budget of the user, as GitHub showed it on the day the data was collected',
+    steps: [
+      'It reads the GitHub Copilot budgets for users in the GitHub data file: budgets for one user, and the amount of each user in a budget that applies to each user.',
+      'A user is listed when the amount used reaches their applicable user limit. An individual limit takes priority, then a cost center default, then the universal default. Broader user limits are replaced, not added.',
+      'In a filtered view only users who are in that view are listed.',
+      'The evidence shows up to 5 users, the most used first. The card names up to 12 users who are in the report, and the count includes all of them.',
+      'Severity is Medium and confidence is High.',
+    ],
+    columns: ['username'],
+    notes: [
+      'The amounts are from the day the data was collected. Budgets start again at the start of each billing cycle.',
+      'Budgets for users count all usage of AI credits, including usage covered by included credits.',
+      'People who have no row in the usage report are counted but cannot be opened on the Users page.',
+    ],
+    example:
+      'A budget of $20 applies to each user. On October 20 GitHub showed that one person used $21 and another used $20. The title reads "2 users reached their budget and cannot use AI credits".',
+    related: ['rec-budgets', 'rec-runaway', 'overage-users'],
+    links: ['budgets', 'setUpBudgets'],
+  },
+  {
+    id: 'rec-report-gap',
+    title: 'Usage report and GitHub billing do not match',
+    area: 'Recommendations',
+    basis: 'calculated',
+    meaning:
+      'Appears when a full month of the usage report has a different usage or billed amount than the AI credit billing of GitHub in the GitHub data file. Figures from the report may then be off.',
+    formula: 'Gap = amount at GitHub − amount in the report, for each full month',
+    steps: [
+      'The AI credit billing of a month is the AI credit usage report of GitHub billing, or else the AI credit lines of the billing usage summary.',
+      'An organization file is compared with the report rows of its organizations only. If none match, it is not compared with every row. An enterprise file is compared with every row.',
+      'Months that were not over when the data was collected, months the report covers only in part and months the report does not cover are left out. A report may miss up to 3 days at the start or end of a month and still count as covering it.',
+      'Usage is compared first, then the billed amount. Amounts within 2%, or within $1, count as the same.',
+      'Each month that differs gets an evidence line. Severity is Medium when the report has less than GitHub in any month, and Low when it only has more.',
+    ],
+    columns: ['date', 'organization', 'gross_amount', 'net_amount'],
+    notes: [
+      'A report with less than GitHub often misses files or days. A report with more often covers more organizations than the GitHub data file.',
+      'GitHub billing is what you pay.',
+      'The Data page shows the check of every month.',
+    ],
+    example:
+      'For September the report shows $9,000 of usage and GitHub billing shows $10,000. The gap of $1,000 is more than 2%, so the report has less and severity is Medium.',
+    related: ['rec-data-coverage', 'rec-data-notes'],
+    links: ['billingUsageApi'],
+  },
+  {
+    id: 'rec-seat-auto-assign',
+    title: 'Seats for every member',
+    area: 'Recommendations',
+    basis: 'calculated',
+    meaning:
+      'Appears when the GitHub data file shows organizations that give a GitHub Copilot seat to all members, and some of those seats had no activity in this billing cycle.',
+    formula: 'Inactive seats = seats with no GitHub Copilot activity in this billing cycle, as GitHub counts them',
+    steps: [
+      'It reads the seat summary of each organization in the GitHub data file: how seats are given, all seats and the seats with no activity in this billing cycle.',
+      'An organization is listed when it gives seats to all members and has at least one inactive seat.',
+      'It needs data collected on day 15 of the month or later, because early in the billing cycle many seats have no activity yet.',
+      'Severity is Medium when at least 5 seats, and at least 20% of the seats of those organizations, are inactive. Otherwise it is Low.',
+      'It has no saving of its own, because it overlaps with idle seats.',
+    ],
+    notes: [
+      'GitHub counts any activity, including code completions, which are not in the usage report.',
+      'The billing cycle is taken to start on the 1st of the month.',
+      'Billing starts when a seat is given, not at first use.',
+    ],
+    example:
+      'On October 20 an organization gives seats to all 40 members, and 10 of those seats had no activity in this billing cycle. That is 25% and at least 5 seats, so severity is Medium.',
+    related: ['rec-idle-seats', 'rec-pool-underuse', 'seat-idle'],
+    links: ['grantAccess', 'seatAssignment'],
+  },
+  {
     id: 'rec-healthy',
     title: 'Pool well used and fully covered',
     area: 'Recommendations',

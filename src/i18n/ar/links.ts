@@ -43,6 +43,8 @@ const arabic: Dict = {
   'GitHub Copilot code review': 'مراجعة الكود في GitHub Copilot',
   'Using agent mode in your IDE': 'استخدام وضع الوكيل في محرر الكود',
   'Installing GitHub Copilot CLI': 'تثبيت GitHub Copilot CLI',
+  'GitHub CLI quickstart': 'البدء السريع مع GitHub CLI',
+  'REST API endpoints for usage reports': 'واجهة REST لتقارير الاستخدام',
   'GitHub Copilot policies for enterprises and organizations': 'سياسات GitHub Copilot للشركات والمؤسسات',
   'Managing policies and features for GitHub Copilot in your organization': 'إدارة سياسات وميزات GitHub Copilot في مؤسستك',
   'Configuring access to AI models in GitHub Copilot': 'ضبط الوصول إلى نماذج الذكاء الاصطناعي في GitHub Copilot',

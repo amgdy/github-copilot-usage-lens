@@ -92,6 +92,7 @@ export function GroupTable({ data, perMonth, showCredits, showPool, billingKnown
       },
       {
         key: 'gross',
+        strong: true,
         header: t('Usage'),
         align: 'end',
         value: (row) => cents(row.gross),

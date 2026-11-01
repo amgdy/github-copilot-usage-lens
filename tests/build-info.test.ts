@@ -20,6 +20,8 @@ describe('describeBuild', () => {
     expect(build.runUrl).toBe('https://github.com/amgdy/github-copilot-usage-lens/actions/runs/40601996915');
     expect(build.commitUrl).toBe('https://github.com/amgdy/github-copilot-usage-lens/commit/e3b1fb9c0ffee1234567890abcdef1234567890a');
     expect(build.builtOn).toBe('2026-10-28');
+    expect(build.commit).toBe('e3b1fb9c0ffee1234567890abcdef1234567890a');
+    expect(build.repository).toBe('amgdy/github-copilot-usage-lens');
   });
 
   it('points to the exact attempt when a run was re-run', () => {
@@ -28,7 +30,7 @@ describe('describeBuild', () => {
 
   it('shows a local build without links', () => {
     const build = describeBuild({ version: '1.0.0' });
-    expect(build).toEqual({ version: '1.0.0', runNumber: undefined, shortCommit: undefined, runUrl: undefined, commitUrl: undefined, builtOn: undefined });
+    expect(build).toEqual({ version: '1.0.0', runNumber: undefined, commit: undefined, repository: undefined, shortCommit: undefined, runUrl: undefined, commitUrl: undefined, builtOn: undefined });
   });
 
   it('makes no link for other servers or malformed values', () => {
@@ -36,6 +38,8 @@ describe('describeBuild', () => {
     expect(describeBuild({ ...actionsBuild, repository: 'amgdy/x"><script>' }).runUrl).toBeUndefined();
     expect(describeBuild({ ...actionsBuild, runId: '12abc' }).runUrl).toBeUndefined();
     expect(describeBuild({ ...actionsBuild, commit: 'not-a-sha' }).commitUrl).toBeUndefined();
+    expect(describeBuild({ ...actionsBuild, serverUrl: 'https://example.com' }).commit).toBeUndefined();
+    expect(describeBuild({ ...actionsBuild, commit: 'e3b1fb9' }).commit).toBeUndefined();
   });
 });
 

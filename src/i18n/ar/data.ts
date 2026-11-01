@@ -83,22 +83,33 @@ const arabic: Dict = {
   'Usage metrics API': 'API مقاييس الاستخدام',
   'Daily use by editor, language and feature. Useful to see how people work with GitHub Copilot, not what it costs.':
     'الاستخدام اليومي حسب المحرر واللغة والميزة. مفيد لمعرفة كيف يعمل الناس مع GitHub Copilot، لا كم يكلّف.',
-  'Not read by this app yet. Use it next to this report.': 'لا يقرأه هذا التطبيق بعد. استخدمه بجانب هذا التقرير.',
   'Team members API': 'API أعضاء الفرق',
   'Which team each user is in. Useful to compare usage by team.': 'الفريق الذي ينتمي إليه كل مستخدم. مفيد لمقارنة الاستخدام حسب الفريق.',
-  'Not read by this app yet. Cost centers in the usage report give a similar view.': 'لا يقرأه هذا التطبيق بعد. مراكز التكلفة في تقرير الاستخدام تعطي صورة مشابهة.',
   'Cost centers API': 'API مراكز التكلفة',
   'All cost centers and their members, including people with no usage yet.': 'كل مراكز التكلفة وأعضاؤها، بمن فيهم من لا استخدام لهم بعد.',
-  'Not read by this app yet. The usage report already names the cost center of each row.': 'لا يقرأه هذا التطبيق بعد. تقرير الاستخدام يذكر بالفعل مركز التكلفة لكل صف.',
   'Billing usage API': 'API استخدام الفوترة',
-  'The same usage as the report file, by API. Useful to download it on a schedule.': 'الاستخدام نفسه الموجود في ملف التقرير، عبر API. مفيد لتنزيله وفق جدول زمني.',
-  'Not read by this app yet. Download the usage report from your billing settings instead.': 'لا يقرأه هذا التطبيق بعد. نزّل تقرير الاستخدام من إعدادات الفوترة بدلًا منه.',
   'Budgets API': 'API الميزانيات',
   'The budgets set for AI credits and how much of each is spent.': 'الميزانيات المحددة لأرصدة الذكاء الاصطناعي وكم أُنفق من كل منها.',
-  'Not read by this app yet. Set budgets in your billing settings.': 'لا يقرأه هذا التطبيق بعد. حدّد الميزانيات في إعدادات الفوترة.',
   'Audit log': 'سجل التدقيق',
-  'When seats were added or removed, and by whom.': 'متى أُضيفت التراخيص أو أُزيلت، ومن فعل ذلك.',
-  'Not read by this app yet. Search the audit log for GitHub Copilot events.': 'لا يقرأه هذا التطبيق بعد. ابحث في سجل التدقيق عن أحداث GitHub Copilot.',
+  'GitHub data file from the collector script': 'ملف بيانات GitHub من سكربت جمع البيانات',
+  'Budgets, seats, members, the whole bill, activity with code completions and seat changes, in one file. It makes the pool, budget and seat findings more exact and adds more recommendations.':
+    'الميزانيات والتراخيص والأعضاء والفاتورة كاملة والنشاط مع إكمالات التعليمات البرمجية وتغييرات التراخيص، في ملف واحد. يجعل نتائج الرصيد المشترك والميزانية والتراخيص أدق ويضيف توصيات أكثر.',
+  'Run the collector script with the command from the GitHub data file card, then load its file.':
+    'شغّل سكربت جمع البيانات بالأمر من بطاقة ملف بيانات GitHub، ثم حمّل ملفه.',
+  'Needs the GitHub CLI': 'يحتاج إلى GitHub CLI',
+  'Read from the GitHub data file. The Budgets page lists each budget, and the AI credit budget becomes the monthly budget when Settings has none.':
+    'يُقرأ من ملف بيانات GitHub. تعرض صفحة الميزانيات كل ميزانية، وتصبح ميزانية أرصدة الذكاء الاصطناعي هي الميزانية الشهرية عندما لا توجد ميزانية في الإعدادات.',
+  'What GitHub billed each month, seats included.': 'ما فوترته GitHub كل شهر، بما في ذلك التراخيص.',
+  'Read from the GitHub data file. Usage and pool shows the whole bill, and the Data page checks the usage report against it.':
+    'يُقرأ من ملف بيانات GitHub. تعرض صفحة «الاستخدام والرصيد المشترك» الفاتورة كاملة، وتقارن صفحة «البيانات» تقرير الاستخدام بها.',
+  'Read from the GitHub data file. Licenses shows who is active, including people who use only code completions.':
+    'يُقرأ من ملف بيانات GitHub. تعرض صفحة «التراخيص» من هو نشط، بمن فيهم من يستخدم إكمالات التعليمات البرمجية فقط.',
+  'When seats were added or removed, and when plans, budgets and policies changed.': 'متى أُضيفت التراخيص أو أُزيلت، ومتى تغيّرت الخطط والميزانيات والسياسات.',
+  'Read from the GitHub data file. Licenses shows the seats added and removed each month.': 'يُقرأ من ملف بيانات GitHub. تعرض صفحة «التراخيص» التراخيص المضافة والمزالة كل شهر.',
+  'Read from the GitHub data file when the script runs with --teams. The Organization page then groups usage by team.':
+    'يُقرأ من ملف بيانات GitHub عند تشغيل السكربت مع --teams. عندها تجمّع صفحة «المؤسسة» الاستخدام حسب الفريق.',
+  'Read from the GitHub data file. The Budgets page uses their user, team and organization assignments to find the applicable limits and shows their included credit pool controls.':
+    'تُقرأ من ملف بيانات GitHub. تستخدم صفحة الميزانيات تعيينات المستخدمين والفرق والمؤسسات لتحديد الحدود السارية، وتعرض ضوابط الرصيد المشترك للأرصدة المشمولة.',
   'What else you can add': 'ما الذي يمكنك إضافته أيضًا',
   'Other GitHub data that adds to the usage report, from the most useful.': 'بيانات GitHub أخرى تضيف إلى تقرير الاستخدام، بدءًا من الأكثر فائدة.',
   'Read by this app': 'يقرأه هذا التطبيق',
@@ -215,8 +226,8 @@ const arabic: Dict = {
 
   // Loading files
   'Choose files to load': 'اختر الملفات لتحميلها',
-  'A usage report replaces the loaded data. Select every report you want in one go: they are joined, and a row that repeats a row from an earlier file is dropped. A GitHub Copilot license list is added to your license list.':
-    'تقرير الاستخدام يستبدل البيانات المحمّلة. اختر كل التقارير التي تريدها دفعة واحدة: تُدمج معًا، ويُحذف الصف الذي يكرر صفًا من ملف سابق. أما قائمة تراخيص GitHub Copilot فتُضاف إلى قائمة التراخيص لديك.',
+  'A usage report replaces the loaded data. Select every report you want in one go: they are joined, and a row that repeats a row from an earlier file is dropped. A GitHub Copilot license list is added to your license list. A GitHub data file from the collector script adds budgets, seats and billing.':
+    'تقرير الاستخدام يستبدل البيانات المحمّلة. اختر كل التقارير التي تريدها دفعة واحدة: تُدمج معًا، ويُحذف الصف الذي يكرر صفًا من ملف سابق. أما قائمة تراخيص GitHub Copilot فتُضاف إلى قائمة التراخيص لديك. ويضيف ملف بيانات GitHub من سكربت جمع البيانات الميزانيات والتراخيص والفوترة.',
   'Load other files': 'تحميل ملفات أخرى',
   'Loading files': 'جارٍ تحميل الملفات',
   'The files could not be loaded': 'تعذّر تحميل الملفات',

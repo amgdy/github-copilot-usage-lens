@@ -1,10 +1,11 @@
-import { Fragment } from 'react';
-import { Lock, Trash2 } from 'lucide-react';
+import { Fragment, type MouseEvent } from 'react';
+import { Lock } from 'lucide-react';
 import { t, tp } from '../../i18n';
 import { useAnalysis } from '../../state/analysis';
 import { navigate, useRoute, type PageId } from '../../state/router';
 import { useApp } from '../../state/store';
 import { BuildVersion } from '../BuildVersion';
+import { StartFreshButton } from '../StartFreshButton';
 import { GitHubCopilotIcon } from '../icons/brand';
 import { BrandMark } from '../icons/BrandMark';
 import { cx } from '../ui/cx';
@@ -23,6 +24,34 @@ export function Brand({ className }: { className?: string }) {
         <div className="font-display mt-1 truncate text-[15px] text-fg">{t('Usage Lens')}</div>
       </div>
     </div>
+  );
+}
+
+/** A click that the browser should handle itself, such as Ctrl or Cmd click to open a new tab. */
+const opensElsewhere = (event: MouseEvent) => event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey;
+
+/**
+ * The app name as a link to the start page. With data loaded, the start page opens on top of it, and Back returns to
+ * the report. On the start page itself (`current`) it is marked as the current page and goes back to the top.
+ */
+export function BrandLink({ current = false, onFollow, className }: { current?: boolean; onFollow?: () => void; className?: string }) {
+  return (
+    <a
+      href="#/"
+      aria-current={current ? 'page' : undefined}
+      aria-label={t('GitHub Copilot Usage Lens: start page')}
+      title={current ? undefined : t('Go to the start page')}
+      onClick={(event) => {
+        if (opensElsewhere(event)) return;
+        event.preventDefault();
+        if (current) window.scrollTo({ top: 0 });
+        else useApp.getState().setPickingData(true);
+        onFollow?.();
+      }}
+      className={cx('focus-inset block min-w-0 rounded-md p-1 transition-colors hover:bg-surface-3', className)}
+    >
+      <Brand />
+    </a>
   );
 }
 
@@ -79,8 +108,8 @@ export function Sidebar() {
   const setPickingData = useApp((state) => state.setPickingData);
   return (
     <aside className="hidden w-60 shrink-0 flex-col border-e border-border bg-bg lg:flex">
-      <div className="px-5 pb-5 pt-4">
-        <Brand />
+      <div className="px-4 pb-4 pt-3">
+        <BrandLink />
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto pb-4">
         <NavList />
@@ -93,9 +122,7 @@ export function Sidebar() {
         <button type="button" className="btn btn-sm w-full" onClick={() => setPickingData(true)}>
           {t('Load other data')}
         </button>
-        <a href="#/settings/data" className="inline-flex items-center gap-1 text-fg-muted underline-offset-2 hover:text-accent hover:underline">
-          <Trash2 size={11} aria-hidden /> {t('Reset or delete saved settings')}
-        </a>
+        <StartFreshButton look="link" />
         <BuildVersion className="flex text-[10px] text-fg-subtle" />
       </div>
     </aside>

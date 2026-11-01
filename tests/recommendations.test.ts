@@ -7,6 +7,7 @@ import { RecommendationCard } from '../src/components/RecommendationCard';
 import type { Analysis } from '../src/lib/analytics/analyze';
 import { emptyFilters, type Filters } from '../src/lib/analytics/filters';
 import { DEFAULT_LEVERS } from '../src/lib/analytics/levers';
+import type { Settings } from '../src/lib/analytics/settings';
 import {
   buildHeadline,
   buildRecommendations,
@@ -47,7 +48,8 @@ import {
   type Pipeline,
   type RowSpec,
 } from './helpers';
-import { agreementCsv, longRow, septemberDate, SEP_WEEKDAYS, spread, terra } from './scenarios';
+import { agreementCsv, longRow, septemberDate, SEP_WEEKDAYS, SEPTEMBER, spread, terra } from './scenarios';
+import { END, budgetRecord, creditLine, header, readLines, recordLine, sourceLine, type Line } from './collectionLines';
 
 const CASES = [
   'fixture A',
@@ -510,8 +512,8 @@ describe('demo dataset: the designed story', () => {
     expect(story.october.recs.filter((recommendation) => recommendation.severity === 'critical' || recommendation.severity === 'high').map((recommendation) => recommendation.id)).toEqual([]);
     expect(ids(story.labs)).toContain('concentration');
     const shown = new Set([analysis(), ...Object.values(story)].flatMap(ids));
-    // Only the rule about missing columns needs another file.
-    expect(RULE_IDS.filter((id) => !shown.has(id))).toEqual(['data-coverage']);
+    // The rules that need the GitHub data file, and the rule about missing columns, need other files.
+    expect(RULE_IDS.filter((id) => !shown.has(id))).toEqual(['budget-no-stop', 'budget-stop-ahead', 'user-budget-reached', 'report-gap', 'seat-auto-assign', 'data-coverage']);
   });
 
   it('assigns the expected severities', () => {
@@ -682,6 +684,143 @@ describe('budget handling', () => {
   it('mentions a budget only when one is configured', () => {
     const none = findRecommendation(PIPELINES['fixture A'].analysis, 'pool-exhaustion').evidence;
     expect(none.some((evidenceLine) => evidenceLine.startsWith('Budget'))).toBe(false);
+  });
+});
+
+describe('rules that need the GitHub data file', () => {
+  // FIXTURE_A is the organization contoso in October 2026 up to the 20th: $93 billed so far, and a $100 budget is projected at 158%.
+  const contosoHeader = (extra: Line = {}): Line =>
+    header({ scope: 'organization', enterprise: null, organizations: ['contoso'], months: ['2026-10'], startedAt: '2026-10-20T18:00:00Z', ...extra });
+  const contosoLine = (kind: string, record: Line, extra: Line = {}): Line => recordLine(kind, record, { scope: 'organization', target: 'contoso', ...extra });
+  const orgBudget = (extra: Line): Line =>
+    contosoLine('budget', budgetRecord('org-budget', { budget_scope: 'organization', budget_entity_name: 'contoso', budget_amount: 100, consumed_amount: 93, ...extra }));
+  const withGitHub = (lines: Line[], options: { filters?: Partial<Filters>; settings?: Partial<Settings>; head?: Line } = {}): Analysis =>
+    pipelineOf(PIPELINES['fixture A'].store, { filters: options.filters, settings: options.settings, collection: readLines([options.head ?? contosoHeader(), ...lines, END]) }).analysis;
+  const AS_OF = 'As of Oct 20, 2026, when the GitHub data was collected.';
+
+  it('warns when the budget of the organization only sends alerts and the bill is going past it', () => {
+    const analysis = withGitHub([orgBudget({ prevent_further_usage: false })]);
+    expect(analysis.budgetSource).toBe('github');
+    const recommendation = findRecommendation(analysis, 'budget-no-stop');
+    expect(recommendation.severity).toBe('high');
+    expect(recommendation.title).toBe('The $100 budget only sends alerts, so the bill can go past it');
+    expect(recommendation.evidence).toEqual([
+      `GitHub shows $93 of the $100 budget used (93%). ${AS_OF}`,
+      expect.stringMatching(/^Budget \$100 for .+: 93% used so far, 158% projected, limit reached around Oct 22\.$/),
+      'Budget alerts are on: GitHub sends an email at 75%, 90% and 100% of the budget.',
+    ]);
+    expect(recommendation.jump?.page).toBe('spend');
+    // The GitHub budget is the monthly budget now, so the advice to set one up is gone.
+    expect(ids(analysis)).not.toContain('budget-stop-ahead');
+    expect(ids(analysis)).not.toContain('budgets');
+  });
+
+  it('warns that people get blocked when the budget stops usage and runs out', () => {
+    const analysis = withGitHub([orgBudget({ prevent_further_usage: true })]);
+    const recommendation = findRecommendation(analysis, 'budget-stop-ahead');
+    expect(recommendation.severity).toBe('high');
+    expect(recommendation.title).toBe('Usage that costs AI credits stops when the $100 budget runs out');
+    expect(ids(analysis)).not.toContain('budget-no-stop');
+  });
+
+  it('uses only the GitHub figures when Settings holds another budget', () => {
+    const analysis = withGitHub([orgBudget({ prevent_further_usage: false, budget_alerting: { will_alert: false } })], { settings: { budgetMonthlyBilled: 500 } });
+    expect(analysis.budgetSource).toBe('settings');
+    const recommendation = findRecommendation(analysis, 'budget-no-stop');
+    // 93% used at GitHub is close to the limit, but nothing says it runs out.
+    expect(recommendation.severity).toBe('medium');
+    expect(recommendation.evidence).toEqual([`GitHub shows $93 of the $100 budget used (93%). ${AS_OF}`, 'Budget alerts are off, so nobody is told when the budget runs out.']);
+    expect(recommendation.actions).toContain('Turn on budget alerts so the right people hear about it early.');
+  });
+
+  it('stays quiet about a budget with room left and in a filtered view', () => {
+    expect(ids(withGitHub([orgBudget({ prevent_further_usage: false, budget_amount: 1000 })]))).not.toContain('budget-no-stop');
+    expect(ids(withGitHub([orgBudget({ prevent_further_usage: false })], { filters: { users: ['alex-dev'] } }))).not.toContain('budget-no-stop');
+    expect(ids(withGitHub([orgBudget({ prevent_further_usage: true })], { filters: { users: ['alex-dev'] } }))).not.toContain('budget-stop-ahead');
+  });
+
+  it('lists the users who reached their budget, in the report or not', () => {
+    const lines = [
+      contosoLine('budget', budgetRecord('alex-only', { budget_scope: 'user', budget_entity_name: 'alex-dev', user: 'alex-dev', budget_amount: 50, consumed_amount: 60 })),
+      contosoLine('budget', budgetRecord('everyone', { budget_scope: 'multi_user_customer', budget_entity_name: 'contoso', budget_amount: 20 })),
+      contosoLine('budget-user', { user: 'kai-not-in-report', consumed_amount: 20, target_amount: 20 }, { parent: 'everyone' }),
+      contosoLine('budget-user', { user: 'sam-lee', consumed_amount: 5, target_amount: 20 }, { parent: 'everyone' }),
+    ];
+    const recommendation = findRecommendation(withGitHub(lines), 'user-budget-reached');
+    expect(recommendation.title).toBe('2 users reached their budget and cannot use AI credits');
+    expect(recommendation.severity).toBe('medium');
+    expect(recommendation.evidence).toEqual(['alex-dev: $60.00 used of a $50.00 budget.', 'kai-not-in-report: $20.00 used of a $20.00 budget.', AS_OF]);
+    expect(recommendation.affectedCount).toBe(2);
+    expect(recommendation.affected.map((user) => user.name)).toEqual(['alex-dev']);
+    expect(recommendation.jump).toEqual({ page: 'users', label: 'Show these users', filters: { users: ['alex-dev'] } });
+    // A filtered view keeps only the users in it.
+    expect(findRecommendation(withGitHub(lines, { filters: { users: ['alex-dev'] } }), 'user-budget-reached').affectedCount).toBe(1);
+    expect(ids(withGitHub(lines, { filters: { users: ['sam-lee'] } }))).not.toContain('user-budget-reached');
+  });
+
+  it('points the budget advice at the budgets GitHub already has', () => {
+    // The demo has enough user-months for the budget advice; fixture A has too few.
+    const everyone = recordLine('budget', budgetRecord('everyone', { budget_scope: 'multi_user_customer', budget_amount: 20 }));
+    const analysis = pipelineOf(PIPELINES.demo.store, { collection: readLines([header(), everyone, END]) }).analysis;
+    expect(analysis.budgetSource).toBeNull();
+    const pointer = 'The GitHub data file lists 1 budget for GitHub Copilot. Check it on the Budgets page before you add more.';
+    expect(findRecommendation(analysis, 'budgets').evidence).toContain(pointer);
+    expect(findRecommendation(PIPELINES.demo.analysis, 'budgets').evidence).not.toContain(pointer);
+  });
+
+  it('flags organizations that give a seat to every member when seats sit unused', () => {
+    const seatSummary = (extra: Line = {}): Line =>
+      contosoLine('seat-summary', {
+        seat_management_setting: 'assign_all',
+        plan_type: 'business',
+        seat_breakdown: { total: 40, active_this_cycle: 30, inactive_this_cycle: 10, added_this_cycle: 0, pending_invitation: 0, pending_cancellation: 0 },
+        ...extra,
+      });
+    const recommendation = findRecommendation(withGitHub([seatSummary()]), 'seat-auto-assign');
+    expect(recommendation.title).toBe('1 organization gives a seat to every member, used or not');
+    expect(recommendation.severity).toBe('medium');
+    expect(recommendation.evidence).toEqual(['contoso: 10 of 40 seats had no GitHub Copilot activity this billing cycle.', AS_OF]);
+    expect(recommendation.impactUsd).toBe(0);
+    expect(recommendation.jump?.page).toBe('organization');
+    // Early in the billing cycle most seats have had no activity yet, and seats given to chosen members are a choice already made.
+    expect(ids(withGitHub([seatSummary()], { head: contosoHeader({ startedAt: '2026-10-05T08:00:00Z' }) }))).not.toContain('seat-auto-assign');
+    expect(ids(withGitHub([seatSummary({ seat_management_setting: 'assign_selected' })]))).not.toContain('seat-auto-assign');
+  });
+
+  describe('a usage report that does not match GitHub billing', () => {
+    let september: Pipeline;
+    beforeAll(async () => {
+      // All of September 2026: $10 a day, covered by included credits, in the organizations acme and globex.
+      september = await analyzeCsv(makeCsv(SEPTEMBER.map((date, index) => ({ date, user: `user-${index % 3}`, gross: 10, discount: 10, net: 0, org: index % 2 === 0 ? 'acme' : 'globex' }))));
+    });
+    const gapOf = (gross: number, net: number, head: Line = header({ months: ['2026-09'] })): Analysis =>
+      pipelineOf(september.store, { collection: readLines([head, sourceLine('ai-credit-usage', 'ok', { month: '2026-09' }), creditLine('2026-09', gross, gross - net, net), END]) }).analysis;
+
+    it('says when the report has less than GitHub billing', () => {
+      const recommendation = findRecommendation(gapOf(400, 100), 'report-gap');
+      expect(recommendation.severity).toBe('medium');
+      expect(recommendation.theme).toBe('data');
+      expect(recommendation.evidence).toEqual(['Sep 2026: usage $300 in the report and $400 at GitHub; billed $0 and $100.']);
+      expect(recommendation.actions[0]).toBe('Download the usage report again for the whole month and load all its files together.');
+    });
+
+    it('says less when the report only has more, and nothing when they match', () => {
+      const recommendation = findRecommendation(gapOf(200, 0), 'report-gap');
+      expect(recommendation.severity).toBe('low');
+      expect(recommendation.actions).toEqual(['Check that the usage report and the GitHub data file cover the same enterprise or organizations.']);
+      expect(ids(gapOf(300, 0))).not.toContain('report-gap');
+    });
+
+    it('compares an organization file with the rows of its organizations only', () => {
+      const acmeHeader = header({ scope: 'organization', enterprise: null, organizations: ['acme'], months: ['2026-09'] });
+      // acme has the 15 days with an even index: $150 of the $300.
+      expect(ids(gapOf(150, 0, acmeHeader))).not.toContain('report-gap');
+      const recommendation = findRecommendation(gapOf(300, 0, acmeHeader), 'report-gap');
+      expect(recommendation.evidence).toEqual([
+        'Sep 2026: usage $150 in the report and $300 at GitHub; billed $0 and $0.',
+        'Only the report rows of acme are compared, the organizations in the GitHub data file.',
+      ]);
+    });
   });
 });
 
@@ -1006,7 +1145,7 @@ describe('calculation docs', () => {
   });
 
   it('finds every rule of the engine in its source', () => {
-    expect(RULE_IDS.length).toBeGreaterThanOrEqual(27);
+    expect(RULE_IDS.length).toBeGreaterThanOrEqual(32);
     expect(new Set(RULE_IDS).size).toBe(RULE_IDS.length);
   });
 
